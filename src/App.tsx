@@ -829,19 +829,19 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[90vh]">
+            <div className="fixed inset-0 z-50 md:relative md:inset-auto max-w-5xl mx-auto bg-white md:rounded-[3rem] shadow-2xl md:border border-slate-200 overflow-hidden flex flex-col h-[100dvh] md:h-[90vh]">
               {/* Header with Back Button */}
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
+              <div className="p-4 md:p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
                 <button 
                   onClick={() => { setSelectedJob(null); setPivotData(null); }}
-                  className="flex items-center gap-2 text-indigo-600 font-black px-6 py-3 bg-indigo-50 hover:bg-indigo-100 transition-colors rounded-full"
+                  className="flex items-center gap-2 text-indigo-600 font-black px-4 py-2 md:px-6 md:py-3 bg-indigo-50 hover:bg-indigo-100 transition-colors rounded-full"
                 >
-                  <ArrowLeft className="w-5 h-5" /> Înapoi la Index
+                  <ArrowLeft className="w-5 h-5" /> <span className="hidden sm:inline">Înapoi la Index</span>
                 </button>
-                <div className="font-black text-slate-900 text-xl">{selectedJob.title}</div>
+                <div className="font-black text-slate-900 text-lg md:text-xl text-right">{selectedJob.title}</div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 md:p-12 relative">
+              <div className="flex-1 overflow-y-auto p-4 md:p-12 relative">
                 {isGenerating ? (
                   <div className="max-w-4xl mx-auto pb-32 w-full animate-pulse">
                     <div className="flex items-center justify-between mb-12">
@@ -893,12 +893,12 @@ export default function App() {
                             I'm feeling lucky
                           </button>
                         </div>
-                        <input
-                          type="text"
+                        <textarea
+                          rows={3}
                           value={contextAnswers.q1}
                           onChange={(e) => setContextAnswers({...contextAnswers, q1: e.target.value})}
                           placeholder="Ex: Să analizez date, să vorbesc cu clienții, să creez strategii..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all"
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
                         />
                       </div>
                       <div>
@@ -915,12 +915,12 @@ export default function App() {
                             I'm feeling lucky
                           </button>
                         </div>
-                        <input
-                          type="text"
+                        <textarea
+                          rows={3}
                           value={contextAnswers.q2}
                           onChange={(e) => setContextAnswers({...contextAnswers, q2: e.target.value})}
                           placeholder="Ex: Antreprenori, corporații, echipe mici, studenți..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all"
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
                         />
                       </div>
                       <div>
@@ -937,12 +937,12 @@ export default function App() {
                             I'm feeling lucky
                           </button>
                         </div>
-                        <input
-                          type="text"
+                        <textarea
+                          rows={3}
                           value={contextAnswers.q3}
                           onChange={(e) => setContextAnswers({...contextAnswers, q3: e.target.value})}
                           placeholder="Ex: 10 ore/săptămână, vreau un venit suplimentar stabil..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all"
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
                         />
                       </div>
                       <div className="mt-8 flex justify-end">
