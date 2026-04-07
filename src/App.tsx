@@ -36,7 +36,8 @@ import {
   Wand2,
   PlayCircle,
   BookOpen,
-  Check
+  Check,
+  Menu
 } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
 import { JOBS_LIST, JobData } from './constants';
@@ -261,7 +262,7 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
   }, []);
 
   return (
-    <div className="fixed bottom-6 right-6 w-[400px] h-[600px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
+    <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-[400px] h-[80vh] md:h-[600px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
       {/* Header */}
       <div className="bg-indigo-600 p-4 flex items-center justify-between text-white">
         <div className="flex items-center gap-3">
@@ -399,7 +400,7 @@ function PlatformChatbot() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-8 left-8 bg-slate-800 text-white p-4 rounded-full shadow-2xl hover:bg-slate-900 hover:scale-110 transition-all z-40 flex items-center gap-3"
+          className="fixed bottom-4 left-4 md:bottom-8 md:left-8 bg-slate-800 text-white p-3 md:p-4 rounded-full shadow-2xl hover:bg-slate-900 hover:scale-110 transition-all z-40 flex items-center gap-3"
         >
           <MessageCircle className="w-6 h-6" />
           <span className="font-bold pr-2 hidden md:inline">Suport Platformă</span>
@@ -407,7 +408,7 @@ function PlatformChatbot() {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-6 left-6 w-[350px] md:w-[400px] h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
+        <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 w-[calc(100vw-2rem)] md:w-[400px] h-[80vh] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
           <div className="bg-slate-800 p-4 flex items-center justify-between text-white">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
@@ -478,6 +479,7 @@ export default function App() {
   const [pivotData, setPivotData] = useState<PivotData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [contextAnswers, setContextAnswers] = useState({ q1: '', q2: '', q3: '' });
   const [luckyLoading, setLuckyLoading] = useState({ q1: false, q2: false, q3: false });
@@ -659,6 +661,8 @@ export default function App() {
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-900">Da<span className="text-indigo-600">România</span></span>
           </div>
+          
+          {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <button onClick={() => scrollTo(missionRef)} className="hover:text-indigo-600 transition-colors">Misiune</button>
             <button onClick={() => scrollTo(principlesRef)} className="hover:text-indigo-600 transition-colors">Principii</button>
@@ -672,7 +676,41 @@ export default function App() {
               Alătură-te Rețelei
             </button>
           </nav>
+
+          {/* Mobile Menu Toggle */}
+          <button 
+            className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
         </div>
+
+        {/* Mobile Nav */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
+            >
+              <div className="px-4 py-6 flex flex-col gap-4">
+                <button onClick={() => { scrollTo(missionRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Misiune</button>
+                <button onClick={() => { scrollTo(principlesRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Principii</button>
+                <button onClick={() => { scrollTo(methodologyRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Metodologie</button>
+                <button onClick={() => { scrollTo(pivotRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Găsește-ți Meseria</button>
+                <button onClick={() => { scrollTo(pricingRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Prețuri</button>
+                <button 
+                  onClick={() => { setActiveModal('join'); setIsMobileMenuOpen(false); }}
+                  className="bg-slate-900 text-white px-5 py-3 rounded-xl hover:bg-slate-800 transition-all shadow-sm mt-2 font-bold"
+                >
+                  Alătură-te Rețelei
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       <main className="w-full">
@@ -842,14 +880,14 @@ export default function App() {
                     
                     <div className="bg-white border-2 border-slate-100 rounded-3xl p-8 shadow-sm space-y-6">
                       <div>
-                        <div className="flex justify-between items-center mb-2">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
                           <label className="block text-lg font-bold text-slate-900">
                             1. Ce îți place cel mai mult să faci în activitatea ta?
                           </label>
                           <button
                             onClick={() => generateLuckyAnswer('q1', 'Ce îți place cel mai mult să faci în activitatea ta?')}
                             disabled={luckyLoading.q1}
-                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100"
+                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
                           >
                             {luckyLoading.q1 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                             I'm feeling lucky
@@ -864,14 +902,14 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <div className="flex justify-between items-center mb-2">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
                           <label className="block text-lg font-bold text-slate-900">
                             2. Cu ce tip de clienți sau colegi preferi să lucrezi?
                           </label>
                           <button
                             onClick={() => generateLuckyAnswer('q2', 'Cu ce tip de clienți sau colegi preferi să lucrezi?')}
                             disabled={luckyLoading.q2}
-                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100"
+                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
                           >
                             {luckyLoading.q2 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                             I'm feeling lucky
@@ -886,14 +924,14 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <div className="flex justify-between items-center mb-2">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
                           <label className="block text-lg font-bold text-slate-900">
                             3. Cât timp poți aloca și care este obiectivul tău principal?
                           </label>
                           <button
                             onClick={() => generateLuckyAnswer('q3', 'Cât timp poți aloca și care este obiectivul tău principal?')}
                             disabled={luckyLoading.q3}
-                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100"
+                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
                           >
                             {luckyLoading.q3 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                             I'm feeling lucky
@@ -1079,13 +1117,13 @@ export default function App() {
         {!isChatOpen && selectedJob && (
           <button
             onClick={() => setIsChatOpen(true)}
-            className="fixed bottom-8 right-8 bg-indigo-600 text-white p-4 rounded-full shadow-2xl hover:bg-indigo-700 hover:scale-110 transition-all z-40 flex items-center gap-3"
+            className="fixed bottom-4 right-4 md:bottom-8 md:right-8 bg-indigo-600 text-white p-3 md:p-4 rounded-full shadow-2xl hover:bg-indigo-700 hover:scale-110 transition-all z-40 flex items-center gap-3"
           >
             <div className="relative">
               <Brain className="w-6 h-6" />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 border-2 border-indigo-600 rounded-full"></span>
             </div>
-            <span className="font-bold pr-2">Agent Monetizare</span>
+            <span className="font-bold pr-2 hidden md:inline">Agent Monetizare</span>
           </button>
         )}
 
