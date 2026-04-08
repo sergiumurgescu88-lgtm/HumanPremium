@@ -9,86 +9,100 @@ const PORT = process.env.PORT || 3001;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// ── NVIDIA NIM - Kimi K2.5 + fallback Qwen ────────────────────────────────
-
-
-const NVIDIA_KEY_QWEN = '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';
-const NVIDIA_KEY_KIMI = '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';
 const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
-async function callNvidia({ messages, systemPrompt }) {
+// ── CHEI AI ───────────────────────────────────────────────────────────────
+const NVIDIA_KEY_QWEN = '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';
+
+// 3 chei Kimi separate pentru Feeling Lucky (rotatie round-robin)
+const KIMI_KEYS = [
+  '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',
+  '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',
+  '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'
+];
+let kimiRoundRobin = 0;
+
+// ── HELPER: call Kimi cu o cheie specifică ────────────────────────────────
+async function callKimi(msgs, keyIndex) {
+  const key = KIMI_KEYS[keyIndex % KIMI_KEYS.length];
+  const res = await fetch(NVIDIA_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'moonshotai/kimi-k2-instruct-0905',
+      messages: msgs,
+      max_tokens: 4096,
+      temperature: 0.6,
+      top_p: 0.9,
+      stream: false
+    })
+  });
+  if (!res.ok) throw new Error(`Kimi[${keyIndex}] ${res.status}`);
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error(`Kimi[${keyIndex}]: no content`);
+  return text;
+}
+
+// ── FEELING LUCKY: Kimi dedicat (round-robin pe 3 chei) ──────────────────
+async function callLucky({ messages, systemPrompt }) {
   const msgs = systemPrompt
     ? [{ role: 'system', content: systemPrompt }, ...messages]
     : messages;
 
-  // 1️⃣ QWEN 397B - Principal
-  try {
-    const res = await fetch(NVIDIA_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${NVIDIA_KEY_QWEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'qwen/qwen3.5-397b-a17b',
-        messages: msgs,
-        max_tokens: 4096,
-        temperature: 0.6,
-        top_p: 0.95,
-        top_k: 20,
-        presence_penalty: 0,
-        repetition_penalty: 1,
-        stream: false
-      })
-    });
-    if (!res.ok) throw new Error(`Qwen ${res.status}`);
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error('Qwen: no content');
-    console.log('[AI] Qwen 397B OK');
-    return text;
-  } catch (err) {
-    console.warn('[AI] Qwen picat:', err.message, '→ fallback Kimi');
-  }
+  const keyIdx = kimiRoundRobin % 3;
+  kimiRoundRobin++;
 
-  // 2️⃣ KIMI - Fallback
-  const res = await fetch(NVIDIA_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${NVIDIA_KEY_KIMI}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'moonshotai/kimi-k2.5',
-      messages: msgs,
-      max_tokens: 4096,
-      temperature: 1.0,
-      top_p: 1.0,
-      stream: false
-    })
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Kimi ${res.status}: ${err.slice(0, 200)}`);
+  // Încearcă cheia curentă, apoi urmAtoarele 2 ca fallback
+  for (let i = 0; i < 3; i++) {
+    try {
+      const text = await callKimi(msgs, (keyIdx + i) % 3);
+      console.log(`[AI Lucky] Kimi[${(keyIdx + i) % 3}] OK`);
+      return text;
+    } catch (err) {
+      console.warn(`[AI Lucky] Kimi[${(keyIdx + i) % 3}] picat:`, err.message);
+    }
   }
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Kimi: no content');
-  console.log('[AI] Kimi fallback OK');
-  return text;
+  throw new Error('Toate cheile Kimi au picat');
 }
 
+// ── GENERARE FINALA: Kimi round-robin pe 3 chei ─────────────────────────
+async function callMain({ messages, systemPrompt }) {
+  const msgs = systemPrompt
+    ? [{ role: 'system', content: systemPrompt }, ...messages]
+    : messages;
 
+  const startIdx = kimiRoundRobin % 3;
+  kimiRoundRobin++;
 
+  for (let i = 0; i < 3; i++) {
+    const idx = (startIdx + i) % 3;
+    try {
+      const text = await callKimi(msgs, idx);
+      console.log(`[AI Main] Kimi[${idx}] OK`);
+      return text;
+    } catch (err) {
+      console.warn(`[AI Main] Kimi[${idx}] picat:`, err.message);
+    }
+  }
+  throw new Error('Toate cheile Kimi au picat');
+}
 
-// ── ENDPOINT PRINCIPAL AI ─────────────────────────────────────────────────
+// ── ENDPOINT AI - detectează tipul de request ─────────────────────────────
 app.post('/api/ai', async (req, res) => {
   try {
-    const { messages, systemPrompt, prompt } = req.body;
-
-    // Suportă și format simplu { prompt: "..." }
+    const { messages, systemPrompt, prompt, lucky } = req.body;
     const msgs = messages || [{ role: 'user', content: prompt || '' }];
-    const text = await callNvidia({ messages: msgs, systemPrompt });
+
+    // lucky=true → Feeling Lucky (Kimi round-robin rapid)
+    // lucky=false/undefined → generare finală (Qwen 397B)
+    const text = lucky
+      ? await callLucky({ messages: msgs, systemPrompt })
+      : await callMain({ messages: msgs, systemPrompt });
+
     res.json({ text });
   } catch (err) {
     console.error('[/api/ai]', err.message);

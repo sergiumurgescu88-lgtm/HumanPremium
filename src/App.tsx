@@ -43,11 +43,11 @@ import { JOBS_LIST, JobData } from './constants';
 import Markdown from 'react-markdown';
 
 // Initialize Gemini
-const callAI = async (prompt: string, system?: string): Promise<string> => {
+const callAI = async (prompt: string, system?: string, lucky?: boolean): Promise<string> => {
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], systemPrompt: system })
+    body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], systemPrompt: system, lucky: lucky ?? false })
   });
   const d = await res.json();
   return d.text || '';
@@ -460,7 +460,7 @@ export default function App() {
     setLuckyLoading(prev => ({ ...prev, [qKey]: true }));
     try {
       const prompt = `Ești un ${selectedJob.title}. Răspunde scurt (maxim 10-15 cuvinte), la persoana a I-a, la următoarea întrebare despre preferințele tale profesionale: "${questionText}". Fii creativ, realist și foarte specific meseriei tale. Nu folosi ghilimele.`;
-      const _luckyText = await callAI(prompt);
+      const _luckyText = await callAI(prompt, undefined, true);
       if (_luckyText) { setContextAnswers(prev => ({ ...prev, [qKey]: _luckyText.trim() })); }
     } catch (error) {
       console.error("Error generating lucky answer:", error);
