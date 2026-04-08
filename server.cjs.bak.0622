@@ -1,0 +1,121 @@
+const dotenv = require('dotenv');
+dotenv.config({ path: '/root/hp-repo/.env' });
+
+const express = require('express');
+const path = require('path');
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// ── NVIDIA NIM - Kimi K2.5 + fallback Qwen ────────────────────────────────
+const NVIDIA_KEY_PRIMARY  = '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';
+const NVIDIA_KEY_FALLBACK = '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';
+const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+
+async function callNvidia({ messages, systemPrompt, stream = false }) {
+  // Build messages array
+  const msgs = systemPrompt
+    ? [{ role: 'system', content: systemPrompt }, ...messages]
+    : messages;
+
+  // Try Kimi K2.5 first
+  try {
+    const res = await fetch(NVIDIA_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NVIDIA_KEY_PRIMARY}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'moonshotai/kimi-k2.5',
+        messages: msgs,
+        max_tokens: 4096,
+        temperature: 1.0,
+        top_p: 1.0,
+        stream: false
+      })
+    });
+
+    if (!res.ok) throw new Error(`Kimi ${res.status}`);
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('Kimi: no content');
+    console.log('[AI] Kimi K2.5 OK');
+    return text;
+
+  } catch (err) {
+    console.warn('[AI] Kimi picat:', err.message, '→ fallback Qwen');
+  }
+
+  // Fallback: Qwen 3.5
+  const res2 = await fetch(NVIDIA_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${NVIDIA_KEY_FALLBACK}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'qwen/qwen3.5-122b-a10b',
+      messages: msgs,
+      max_tokens: 4096,
+      temperature: 0.6,
+      top_p: 0.95,
+      stream: false,
+      chat_template_kwargs: { enable_thinking: false }
+    })
+  });
+
+  if (!res2.ok) {
+    const err = await res2.text();
+    throw new Error(`Qwen ${res2.status}: ${err.slice(0, 200)}`);
+  }
+  const data2 = await res2.json();
+  const text2 = data2.choices?.[0]?.message?.content;
+  if (!text2) throw new Error('Qwen: no content');
+  console.log('[AI] Qwen fallback OK');
+  return text2;
+}
+
+// ── ENDPOINT PRINCIPAL AI ─────────────────────────────────────────────────
+app.post('/api/ai', async (req, res) => {
+  try {
+    const { messages, systemPrompt, prompt } = req.body;
+
+    // Suportă și format simplu { prompt: "..." }
+    const msgs = messages || [{ role: 'user', content: prompt || '' }];
+    const text = await callNvidia({ messages: msgs, systemPrompt });
+    res.json({ text });
+  } catch (err) {
+    console.error('[/api/ai]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── STRIPE ────────────────────────────────────────────────────────────────
+app.post('/api/create-payment-intent', async (req, res) => {
+  try {
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const { amount, email } = req.body;
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100),
+      currency: 'ron',
+      receipt_email: email,
+      metadata: { platform: 'daromania.online' }
+    });
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error('[Stripe]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── SPA fallback ──────────────────────────────────────────────────────────
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+app.listen(PORT, () => console.log(`[DaRomania] Server pornit pe portul ${PORT}`));

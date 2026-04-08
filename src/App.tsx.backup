@@ -36,22 +36,14 @@ import {
   Wand2,
   PlayCircle,
   BookOpen,
-  Check,
-  Menu
+  Check
 } from 'lucide-react';
+import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
 import { JOBS_LIST, JobData } from './constants';
 import Markdown from 'react-markdown';
 
 // Initialize Gemini
-const callAI = async (prompt: string, system?: string): Promise<string> => {
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], systemPrompt: system })
-  });
-  const d = await res.json();
-  return d.text || '';
-};
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 type ModalType = 'join' | 'eligibility' | 'download' | null;
 
@@ -127,7 +119,13 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
         parts: [{ text: m.text }]
       }));
 
-      const response = await callAI(prompt);
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: contents,
+        config: {
+          systemInstruction: `Ești agentul AI personal de monetizare pentru un ${job.title}. Îl ajuți zi de zi să își crească veniturile, să găsească clienți și să implementeze proiectele de pivotare. Fii scurt, la obiect și proactiv. Răspunde în română.`
+        }
+      });
 
       if (response.text) {
         setMessages(prev => [...prev, { role: 'model', text: response.text! }]);
@@ -184,7 +182,71 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
       source.connect(processor);
       processor.connect(audioCtx.destination);
 
-      const sessionPromise = Promise.resolve(null);
+      const sessionPromise = genAI.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        callbacks: {
+          onopen: () => {
+            processor.onaudioprocess = (e) => {
+              const channelData = e.inputBuffer.getChannelData(0);
+              const pcm16 = new Int16Array(channelData.length);
+              for (let i = 0; i < channelData.length; i++) {
+                pcm16[i] = Math.max(-32768, Math.min(32767, channelData[i] * 32768));
+              }
+              const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm16.buffer)));
+              sessionPromise.then(session => {
+                session.sendRealtimeInput({ audio: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
+              });
+            };
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (base64Audio && audioContextRef.current) {
+              const binary = atob(base64Audio);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              const pcm16 = new Int16Array(bytes.buffer);
+              const audioBuffer = audioContextRef.current.createBuffer(1, pcm16.length, 24000);
+              const channelData = audioBuffer.getChannelData(0);
+              for (let i = 0; i < pcm16.length; i++) channelData[i] = pcm16[i] / 32768;
+
+              const playSource = audioContextRef.current.createBufferSource();
+              playSource.buffer = audioBuffer;
+              playSource.connect(audioContextRef.current.destination);
+
+              if (nextPlayTimeRef.current < audioContextRef.current.currentTime) {
+                nextPlayTimeRef.current = audioContextRef.current.currentTime;
+              }
+              playSource.start(nextPlayTimeRef.current);
+              nextPlayTimeRef.current += audioBuffer.duration;
+              activeSourcesRef.current.push(playSource);
+            }
+
+            if (message.serverContent?.interrupted) {
+              activeSourcesRef.current.forEach(s => {
+                try { s.stop(); } catch(e){}
+              });
+              activeSourcesRef.current = [];
+              if (audioContextRef.current) {
+                nextPlayTimeRef.current = audioContextRef.current.currentTime;
+              }
+            }
+          },
+          onclose: () => {
+            stopVoice();
+          },
+          onerror: (e) => {
+            console.error("Live API Error:", e);
+            stopVoice();
+          }
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
+          },
+          systemInstruction: `Ești agentul AI personal de monetizare pentru un ${job.title}. Îl ajuți zi de zi să își crească veniturile. Răspunde scurt, practic și în română. Istoricul recent (rezumat): ${messages.slice(-5).map(m => m.role + ': ' + m.text).join(' | ')}`,
+        }
+      });
 
       sessionRef.current = await sessionPromise;
 
@@ -199,7 +261,7 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-[400px] h-[80vh] md:h-[600px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
+    <div className="fixed bottom-6 right-6 w-[400px] h-[600px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
       {/* Header */}
       <div className="bg-indigo-600 p-4 flex items-center justify-between text-white">
         <div className="flex items-center gap-3">
@@ -296,7 +358,15 @@ function PlatformChatbot() {
 
   useEffect(() => {
     if (!chatRef.current) {
-      chatRef.current = null;
+      chatRef.current = genAI.chats.create({
+        model: "gemini-3-flash-preview",
+        config: {
+          systemInstruction: `Ești asistentul virtual al platformei 'Human Premium' (AI Monetization Hub). 
+          Scopul platformei: Ajută profesioniștii să nu fie înlocuiți de AI, ci să pivoteze către roluri strategice, oferind planuri de business și proiecte de monetizare.
+          Servicii: Generare de strategii de pivotare, idei de proiecte de monetizare, și 'AI Dividend Program' (un fond de tranziție global pentru cei afectați de automatizare).
+          Ton: Profesionist, empatic, încurajator, concis. Răspunde în limba română.`
+        }
+      });
     }
   }, []);
 
@@ -329,7 +399,7 @@ function PlatformChatbot() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-4 left-4 md:bottom-8 md:left-8 bg-slate-800 text-white p-3 md:p-4 rounded-full shadow-2xl hover:bg-slate-900 hover:scale-110 transition-all z-40 flex items-center gap-3"
+          className="fixed bottom-8 left-8 bg-slate-800 text-white p-4 rounded-full shadow-2xl hover:bg-slate-900 hover:scale-110 transition-all z-40 flex items-center gap-3"
         >
           <MessageCircle className="w-6 h-6" />
           <span className="font-bold pr-2 hidden md:inline">Suport Platformă</span>
@@ -337,7 +407,7 @@ function PlatformChatbot() {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 w-[calc(100vw-2rem)] md:w-[400px] h-[80vh] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
+        <div className="fixed bottom-6 left-6 w-[350px] md:w-[400px] h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
           <div className="bg-slate-800 p-4 flex items-center justify-between text-white">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
@@ -408,7 +478,6 @@ export default function App() {
   const [pivotData, setPivotData] = useState<PivotData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [contextAnswers, setContextAnswers] = useState({ q1: '', q2: '', q3: '' });
   const [luckyLoading, setLuckyLoading] = useState({ q1: false, q2: false, q3: false });
@@ -460,8 +529,13 @@ export default function App() {
     setLuckyLoading(prev => ({ ...prev, [qKey]: true }));
     try {
       const prompt = `Ești un ${selectedJob.title}. Răspunde scurt (maxim 10-15 cuvinte), la persoana a I-a, la următoarea întrebare despre preferințele tale profesionale: "${questionText}". Fii creativ, realist și foarte specific meseriei tale. Nu folosi ghilimele.`;
-      const _luckyText = await callAI(prompt);
-      if (_luckyText) { setContextAnswers(prev => ({ ...prev, [qKey]: _luckyText.trim() })); }
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      if (response.text) {
+        setContextAnswers(prev => ({ ...prev, [qKey]: response.text.trim() }));
+      }
     } catch (error) {
       console.error("Error generating lucky answer:", error);
     } finally {
@@ -494,7 +568,40 @@ export default function App() {
         - suitabilityQuestions: Un array de 2-3 întrebări de auto-reflecție (string-uri) profunde și specifice pentru a ajuta utilizatorul să-și dea seama exact dacă acest proiect i se potrivește (ex: "Ești confortabil să construiești o audiență de la zero?", "Ai răbdarea necesară pentru a oferi suport 1-la-1?"). Acestea trebuie să fie întrebări la care utilizatorul să răspundă cu Da/Nu sau să reflecteze profund.
       `;
 
-      const response = await callAI(prompt);
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              pivotStrategy: { type: Type.STRING },
+              monetizationProjects: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    platform: { type: Type.STRING },
+                    marketingStrategy: { type: Type.STRING },
+                    innovation: { type: Type.STRING },
+                    projectType: { type: Type.STRING },
+                    monetizationMethod: { type: Type.STRING },
+                    suitabilityQuestions: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    }
+                  },
+                  required: ["title", "description", "platform", "marketingStrategy", "innovation", "projectType", "monetizationMethod", "suitabilityQuestions"]
+                }
+              }
+            },
+            required: ["pivotStrategy", "monetizationProjects"]
+          }
+        }
+      });
 
       if (response.text) {
         const data = JSON.parse(response.text);
@@ -552,8 +659,6 @@ export default function App() {
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-900">Da<span className="text-indigo-600">România</span></span>
           </div>
-          
-          {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <button onClick={() => scrollTo(missionRef)} className="hover:text-indigo-600 transition-colors">Misiune</button>
             <button onClick={() => scrollTo(principlesRef)} className="hover:text-indigo-600 transition-colors">Principii</button>
@@ -567,41 +672,7 @@ export default function App() {
               Alătură-te Rețelei
             </button>
           </nav>
-
-          {/* Mobile Menu Toggle */}
-          <button 
-            className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          >
-            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
         </div>
-
-        {/* Mobile Nav */}
-        <AnimatePresence>
-          {isMobileMenuOpen && (
-            <motion.div 
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
-            >
-              <div className="px-4 py-6 flex flex-col gap-4">
-                <button onClick={() => { scrollTo(missionRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Misiune</button>
-                <button onClick={() => { scrollTo(principlesRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Principii</button>
-                <button onClick={() => { scrollTo(methodologyRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Metodologie</button>
-                <button onClick={() => { scrollTo(pivotRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Găsește-ți Meseria</button>
-                <button onClick={() => { scrollTo(pricingRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Prețuri</button>
-                <button 
-                  onClick={() => { setActiveModal('join'); setIsMobileMenuOpen(false); }}
-                  className="bg-slate-900 text-white px-5 py-3 rounded-xl hover:bg-slate-800 transition-all shadow-sm mt-2 font-bold"
-                >
-                  Alătură-te Rețelei
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </header>
 
       <main className="w-full">
@@ -720,19 +791,19 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="fixed inset-0 z-50 md:relative md:inset-auto max-w-5xl mx-auto bg-white md:rounded-[3rem] shadow-2xl md:border border-slate-200 overflow-hidden flex flex-col h-[100dvh] md:h-[90vh]">
+            <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[90vh]">
               {/* Header with Back Button */}
-              <div className="p-4 md:p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
                 <button 
                   onClick={() => { setSelectedJob(null); setPivotData(null); }}
-                  className="flex items-center gap-2 text-indigo-600 font-black px-4 py-2 md:px-6 md:py-3 bg-indigo-50 hover:bg-indigo-100 transition-colors rounded-full"
+                  className="flex items-center gap-2 text-indigo-600 font-black px-6 py-3 bg-indigo-50 hover:bg-indigo-100 transition-colors rounded-full"
                 >
-                  <ArrowLeft className="w-5 h-5" /> <span className="hidden sm:inline">Înapoi la Index</span>
+                  <ArrowLeft className="w-5 h-5" /> Înapoi la Index
                 </button>
-                <div className="font-black text-slate-900 text-lg md:text-xl text-right">{selectedJob.title}</div>
+                <div className="font-black text-slate-900 text-xl">{selectedJob.title}</div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 md:p-12 relative">
+              <div className="flex-1 overflow-y-auto p-6 md:p-12 relative">
                 {isGenerating ? (
                   <div className="max-w-4xl mx-auto pb-32 w-full animate-pulse">
                     <div className="flex items-center justify-between mb-12">
@@ -771,69 +842,69 @@ export default function App() {
                     
                     <div className="bg-white border-2 border-slate-100 rounded-3xl p-8 shadow-sm space-y-6">
                       <div>
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
+                        <div className="flex justify-between items-center mb-2">
                           <label className="block text-lg font-bold text-slate-900">
                             1. Ce îți place cel mai mult să faci în activitatea ta?
                           </label>
                           <button
                             onClick={() => generateLuckyAnswer('q1', 'Ce îți place cel mai mult să faci în activitatea ta?')}
                             disabled={luckyLoading.q1}
-                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
+                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100"
                           >
                             {luckyLoading.q1 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                             I'm feeling lucky
                           </button>
                         </div>
-                        <textarea
-                          rows={3}
+                        <input
+                          type="text"
                           value={contextAnswers.q1}
                           onChange={(e) => setContextAnswers({...contextAnswers, q1: e.target.value})}
                           placeholder="Ex: Să analizez date, să vorbesc cu clienții, să creez strategii..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all"
                         />
                       </div>
                       <div>
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
+                        <div className="flex justify-between items-center mb-2">
                           <label className="block text-lg font-bold text-slate-900">
                             2. Cu ce tip de clienți sau colegi preferi să lucrezi?
                           </label>
                           <button
                             onClick={() => generateLuckyAnswer('q2', 'Cu ce tip de clienți sau colegi preferi să lucrezi?')}
                             disabled={luckyLoading.q2}
-                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
+                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100"
                           >
                             {luckyLoading.q2 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                             I'm feeling lucky
                           </button>
                         </div>
-                        <textarea
-                          rows={3}
+                        <input
+                          type="text"
                           value={contextAnswers.q2}
                           onChange={(e) => setContextAnswers({...contextAnswers, q2: e.target.value})}
                           placeholder="Ex: Antreprenori, corporații, echipe mici, studenți..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all"
                         />
                       </div>
                       <div>
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
+                        <div className="flex justify-between items-center mb-2">
                           <label className="block text-lg font-bold text-slate-900">
                             3. Cât timp poți aloca și care este obiectivul tău principal?
                           </label>
                           <button
                             onClick={() => generateLuckyAnswer('q3', 'Cât timp poți aloca și care este obiectivul tău principal?')}
                             disabled={luckyLoading.q3}
-                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
+                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100"
                           >
                             {luckyLoading.q3 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                             I'm feeling lucky
                           </button>
                         </div>
-                        <textarea
-                          rows={3}
+                        <input
+                          type="text"
                           value={contextAnswers.q3}
                           onChange={(e) => setContextAnswers({...contextAnswers, q3: e.target.value})}
                           placeholder="Ex: 10 ore/săptămână, vreau un venit suplimentar stabil..."
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all"
                         />
                       </div>
                       <div className="mt-8 flex justify-end">
@@ -1008,13 +1079,13 @@ export default function App() {
         {!isChatOpen && selectedJob && (
           <button
             onClick={() => setIsChatOpen(true)}
-            className="fixed bottom-4 right-4 md:bottom-8 md:right-8 bg-indigo-600 text-white p-3 md:p-4 rounded-full shadow-2xl hover:bg-indigo-700 hover:scale-110 transition-all z-40 flex items-center gap-3"
+            className="fixed bottom-8 right-8 bg-indigo-600 text-white p-4 rounded-full shadow-2xl hover:bg-indigo-700 hover:scale-110 transition-all z-40 flex items-center gap-3"
           >
             <div className="relative">
               <Brain className="w-6 h-6" />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 border-2 border-indigo-600 rounded-full"></span>
             </div>
-            <span className="font-bold pr-2 hidden md:inline">Agent Monetizare</span>
+            <span className="font-bold pr-2">Agent Monetizare</span>
           </button>
         )}
 
