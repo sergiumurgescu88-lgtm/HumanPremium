@@ -18,7 +18,7 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     app: "DaRomania",
-    model: process.env.OPENAI_MODEL || "gpt-5"
+    model: process.env.OPENAI_MODEL || "gpt-4o"
   });
 });
 
@@ -26,7 +26,7 @@ app.post("/api/chat", async (req, res) => {
   try {
     const prompt = req.body.prompt || req.body.messages?.[0]?.content || "Salut DaRomania";
     const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-5",
+      model: process.env.OPENAI_MODEL || "gpt-4o",
       input: prompt || "Salut DaRomania"
     });
 
