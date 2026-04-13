@@ -1,3 +1,4 @@
+import BuddyArsenalChat from './components/BuddyArsenalChat';
 import { useState, useMemo } from 'react';
 import { JOBS_LIST } from './constants';
 
@@ -745,4 +746,5 @@ export default function ArsenalPage({ onClose }: Props) {
       </div>
     </div>
   );
+    <BuddyArsenalChat />
 }
