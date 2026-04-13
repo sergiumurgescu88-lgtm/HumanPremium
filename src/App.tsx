@@ -513,7 +513,9 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
     setGeneratingTools(idx);
     try {
       const prompt = 'Expert tooluri digitale si AI. DOAR JSON fara markdown: [{"category":"Cercetare & Analiza","tools":["tool1","tool2","tool3"],"usage":"cum le folosesti","signup":"unde te inregistrezi gratuit"},{"category":"Creare Continut AI","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link inregistrare"},{"category":"Marketing & Outreach","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"},{"category":"Automatizare","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"},{"category":"Monetizare & Plati","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"},{"category":"Analytics","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"}] pentru business: ' + project.title + ' pe ' + (project.platform||'');
-      const response = await callAI(prompt, mode);
+      const buddy = await runBuddy(prompt);
+      setMode(buddy.mode as any);
+      const response = await callAI(prompt, buddy.mode);
       const clean = response.replace(/```json/g,'').replace(/```/g,'').trim();
       const data = JSON.parse(clean);
       setProjectTools((prev: any) => ({ ...prev, [idx]: data }));
@@ -995,7 +997,9 @@ export default function App() {
     setGeneratingTools(idx);
     try {
         const prompt = `Ești un expert în tools digitale și AI. Returnează DOAR JSON fără markdown, fără text extra, pentru proiectul: ${project.title} pe platforma ${project.platform}. Format: [{category:'Cercetare',tools:['tool1','tool2'],usage:'descriere'},{category:'Marketing',tools:['tool1','tool2'],usage:'descriere'},{category:'Automatizare',tools:['tool1','tool2'],usage:'descriere'},{category:'Monetizare',tools:['tool1','tool2'],usage:'descriere'},{category:'Analytics',tools:['tool1','tool2'],usage:'descriere'}]`;
-      const response = await callAI(prompt, mode);
+      const buddy = await runBuddy(prompt);
+      setMode(buddy.mode as any);
+      const response = await callAI(prompt, buddy.mode);
       const clean = response.replace(/```json/g,'').replace(/```/g,'').trim();
       const data = JSON.parse(clean);
       setProjectTools(prev => ({ ...prev, [idx]: data }));
@@ -1017,7 +1021,9 @@ export default function App() {
     }, 600);
     try {
       const prompt = `Ești OpenClaw.ai cu 3 agenți: CTO, CFO, SEO. Construiește plan complet pentru: ${project.title} pe ${project.platform}. Răspunde DOAR JSON fără markdown: {"product":"descriere produs","acquisition":"strategie clienti","agents":{"cto":"stack tehnic","cfo":"proiectii financiare","seo":"strategie seo"},"pipeline":["Ziua 1-7: actiuni","Ziua 8-14: actiuni","Luna 1: actiuni","Luna 2-3: actiuni","Luna 4-6: actiuni","Luna 7-12: actiuni"],"openclawSetup":"ghid instalare nvidia api + telegram"}`;
-      const response = await callAI(prompt, mode);
+      const buddy = await runBuddy(prompt);
+      setMode(buddy.mode as any);
+      const response = await callAI(prompt, buddy.mode);
       clearInterval(timer);
       setDevelopProgress(100);
       const clean = response.replace(/```json/g,'').replace(/```/g,'').trim();
@@ -1069,7 +1075,9 @@ export default function App() {
         - suitabilityQuestions: Un array de 2-3 întrebări de auto-reflecție (string-uri) profunde și specifice pentru a ajuta utilizatorul să-și dea seama exact dacă acest proiect i se potrivește (ex: "Ești confortabil să construiești o audiență de la zero?", "Ai răbdarea necesară pentru a oferi suport 1-la-1?"). Acestea trebuie să fie întrebări la care utilizatorul să răspundă cu Da/Nu sau să reflecteze profund.
       `;
 
-      const response = await callAI(prompt, mode);
+      const buddy = await runBuddy(prompt);
+      setMode(buddy.mode as any);
+      const response = await callAI(prompt, buddy.mode);
 
       if (response) {
         let parsed;
