@@ -744,8 +744,8 @@ export default function ArsenalPage({ onClose }: Props) {
           </div>
         </div>
         <BusinessDocsSection />
+        <BuddyArsenalChat />
       </div>
     </div>
   );
-    <BuddyArsenalChat />
 }
