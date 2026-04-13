@@ -1,3 +1,4 @@
+import BuddyArsenalChat from './components/BuddyArsenalChat';
 import ProfilePage from './auth/ProfilePage';
 import AfacereLaCheiePage from './AfacereLaCheiePage';
 import ArsenalPage from './ArsenalPage';
@@ -1252,7 +1253,7 @@ onClick={() => {}} className="hidden" />
           )}
 
         {/* OPENCLAW PAGE */}
-        {showArsenal && <ArsenalPage onClose={() => setShowArsenal(false)} />}
+          {showArsenal && <><ArsenalPage onClose={() => setShowArsenal(false)} /><BuddyArsenalChat /></>}
         {showAfacere && <AfacereLaCheiePage onClose={() => setShowAfacere(false)} />}
         
         
