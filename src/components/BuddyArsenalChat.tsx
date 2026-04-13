@@ -54,7 +54,7 @@ export default function BuddyArsenalChat({ initialPrompt }: Props) {
   };
 
   return (
-    <div className="fixed right-6 bottom-6 w-80 h-[520px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col z-50">
+    <div className="fixed top-4 right-4 w-96 h-[600px] border-4 border-red-500 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col z-50">
       <div className="p-4 border-b border-zinc-800 font-bold text-white">
         ⚡ Buddy Arsenal
       </div>
