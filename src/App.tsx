@@ -2,6 +2,7 @@ import ProfilePage from './auth/ProfilePage';
 import AfacereLaCheiePage from './AfacereLaCheiePage';
 import ArsenalPage from './ArsenalPage';
 import { T, BRANDS, LANG_NAMES, type Lang } from './i18n';
+import { runBuddy } from './core/buddyEngine';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -433,7 +434,9 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
         parts: [{ text: m.text }]
       }));
 
-      const response = await callAI(prompt, mode);
+      const buddy = await runBuddy(prompt);
+      setMode(buddy.mode as any);
+      const response = await callAI(prompt, buddy.mode);
 
       if (response) {
         setMessages(prev => [...prev, { role: 'model', text: response.text! }]);
@@ -794,7 +797,7 @@ const RadarChart = ({ job }: { job: any }) => {
 };
 
 export default function App() {
-  const { mode } = useAgentState();
+  const { mode, setMode } = useAgentState();
   const [searchTerm, setSearchTerm] = useState('');
 
   const getArsenalButtons = (project) => {
