@@ -469,6 +469,7 @@ interface Props {
 }
 
 export default function ArsenalPage({ onClose }: Props) {
+  const [selectedProfession, setSelectedProfession] = useState('');
   const [search, setSearch] = useState('');
   const [activeCat, setActiveCat] = useState('Toate');
   const [selectedId, setSelectedId] = useState<number | null>(null);

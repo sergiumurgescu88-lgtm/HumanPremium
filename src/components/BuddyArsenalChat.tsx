@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { runBuddy } from '../core/buddyEngine';
 
 type Message = {
@@ -6,32 +6,29 @@ type Message = {
   text: string;
 };
 
-export default function BuddyArsenalChat() {
+type Props = {
+  initialPrompt?: string;
+};
+
+export default function BuddyArsenalChat({ initialPrompt }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'buddy',
-      text: 'Salut 👋 Sunt Buddy. Spune-mi meseria ta și îți arăt cum o transformi într-un business AI.'
+      text: 'Salut 👋 Sunt Buddy. Selectează o meserie și îți arăt business-ul AI perfect.'
     }
   ]);
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const processPrompt = async (text: string) => {
+    if (!text.trim()) return;
 
-    const userText = input;
-
-    setMessages(prev => [
-      ...prev,
-      { role: 'user', text: userText }
-    ]);
-
-    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text }]);
     setLoading(true);
 
     try {
-      const result = await runBuddy(userText);
+      const result = await runBuddy(text);
 
       const reply =
         `🎯 Detectat: ${result.context.detectedIntent}\n` +
@@ -39,13 +36,21 @@ export default function BuddyArsenalChat() {
         `💡 Recomandare: combină 2-3 API-uri gratuite și lansează MVP-ul la $9/lună.\n` +
         `💶 Potențial: €1.500–€5.000/lună`;
 
-      setMessages(prev => [
-        ...prev,
-        { role: 'buddy', text: reply }
-      ]);
+      setMessages(prev => [...prev, { role: 'buddy', text: reply }]);
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (initialPrompt) {
+      processPrompt(initialPrompt);
+    }
+  }, [initialPrompt]);
+
+  const sendMessage = async () => {
+    await processPrompt(input);
+    setInput('');
   };
 
   return (
@@ -55,16 +60,16 @@ export default function BuddyArsenalChat() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((m, i) => (
+        {messages.map((msg, i) => (
           <div
             key={i}
             className={`p-3 rounded-xl text-sm whitespace-pre-line ${
-              m.role === 'user'
-                ? 'bg-blue-600 text-white ml-8'
-                : 'bg-zinc-800 text-zinc-100 mr-8'
+              msg.role === 'buddy'
+                ? 'bg-zinc-800 text-white'
+                : 'bg-green-600 text-white ml-6'
             }`}
           >
-            {m.text}
+            {msg.text}
           </div>
         ))}
       </div>
@@ -73,10 +78,9 @@ export default function BuddyArsenalChat() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Scrie meseria ta..."
-          className="flex-1 bg-zinc-900 text-white rounded-xl px-3 py-2 outline-none"
+          placeholder="Scrie meseria sau ideea..."
+          className="flex-1 px-3 py-2 bg-zinc-900 text-white rounded-xl outline-none"
         />
-
         <button
           onClick={sendMessage}
           disabled={loading}
