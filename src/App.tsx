@@ -1,9 +1,7 @@
-import BuddyArsenalChat from './components/BuddyArsenalChat';
 import ProfilePage from './auth/ProfilePage';
 import AfacereLaCheiePage from './AfacereLaCheiePage';
 import ArsenalPage from './ArsenalPage';
 import { T, BRANDS, LANG_NAMES, type Lang } from './i18n';
-import { runBuddy } from './core/buddyEngine';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -59,56 +57,20 @@ import {
 } from 'lucide-react';
 import { JOBS_LIST, JobData } from './constants';
 import Markdown from 'react-markdown';
-import ClawStatusBar from './components/ClawStatusBar';
-import { useAgentState } from './context/AgentStateProvider';
 
 // Initialize Gemini
-
-const callAI = async (prompt: string, mode: string = "chat", lucky?: boolean): Promise<string> => {
-
-  const SYSTEM_PROMPTS: Record<string, string> = {
-
-    coding: "You are a senior software engineer. Be precise, structured, give code-first answers, no fluff.",
-
-    marketing: "You are a growth hacker and marketing strategist. Focus on conversion, hooks, funnels, and virality.",
-
-    side_hustle: "You are a startup advisor. Focus on monetization, fast execution, MVPs, and scalable ideas.",
-
-    chat: "You are a helpful AI assistant. Be clear and friendly."
-
-  };
-
-
-
-  const systemPrompt = SYSTEM_PROMPTS[mode] || SYSTEM_PROMPTS.chat;
-
-
-
-  const res = await fetch("/api/chat", {
-
-    method: "POST",
-
-    headers: { "Content-Type": "application/json" },
-
-    body: JSON.stringify({
-
-      messages: [{ role: "user", content: prompt }],
-
-      systemPrompt,
-
-      lucky: lucky ?? false
-
-    })
-
+const callAI = async (prompt: string, system?: string, lucky?: boolean): Promise<string> => {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], systemPrompt: system, lucky: lucky ?? false })
   });
-
-
-
   const d = await res.json();
-
-  return d.text || "";
-
+  return d.text || '';
 };
+
+type ModalType = 'join' | 'eligibility' | 'download' | null;
+
 interface MonetizationProject {
   title: string;
   description: string;
@@ -435,9 +397,7 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
         parts: [{ text: m.text }]
       }));
 
-      const buddy = await runBuddy(prompt);
-      setMode(buddy.mode as any);
-      const response = await callAI(prompt, buddy.mode);
+      const response = await callAI(prompt);
 
       if (response) {
         setMessages(prev => [...prev, { role: 'model', text: response.text! }]);
@@ -514,9 +474,7 @@ function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
     setGeneratingTools(idx);
     try {
       const prompt = 'Expert tooluri digitale si AI. DOAR JSON fara markdown: [{"category":"Cercetare & Analiza","tools":["tool1","tool2","tool3"],"usage":"cum le folosesti","signup":"unde te inregistrezi gratuit"},{"category":"Creare Continut AI","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link inregistrare"},{"category":"Marketing & Outreach","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"},{"category":"Automatizare","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"},{"category":"Monetizare & Plati","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"},{"category":"Analytics","tools":["tool1","tool2"],"usage":"cum le folosesti","signup":"link"}] pentru business: ' + project.title + ' pe ' + (project.platform||'');
-      const buddy = await runBuddy(prompt);
-      setMode(buddy.mode as any);
-      const response = await callAI(prompt, buddy.mode);
+      const response = await callAI(prompt);
       const clean = response.replace(/```json/g,'').replace(/```/g,'').trim();
       const data = JSON.parse(clean);
       setProjectTools((prev: any) => ({ ...prev, [idx]: data }));
@@ -800,7 +758,6 @@ const RadarChart = ({ job }: { job: any }) => {
 };
 
 export default function App() {
-  const { mode, setMode } = useAgentState();
   const [searchTerm, setSearchTerm] = useState('');
 
   const getArsenalButtons = (project) => {
@@ -888,7 +845,7 @@ export default function App() {
     };
 
     try {
-      const response = await callAI(pm[btn.key] || pm.tts, mode);
+      const response = await callAI(pm[btn.key] || pm.tts);
       clearInterval(timer);
       setArsenalProgress(100);
       const clean = response.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
@@ -998,9 +955,7 @@ export default function App() {
     setGeneratingTools(idx);
     try {
         const prompt = `Ești un expert în tools digitale și AI. Returnează DOAR JSON fără markdown, fără text extra, pentru proiectul: ${project.title} pe platforma ${project.platform}. Format: [{category:'Cercetare',tools:['tool1','tool2'],usage:'descriere'},{category:'Marketing',tools:['tool1','tool2'],usage:'descriere'},{category:'Automatizare',tools:['tool1','tool2'],usage:'descriere'},{category:'Monetizare',tools:['tool1','tool2'],usage:'descriere'},{category:'Analytics',tools:['tool1','tool2'],usage:'descriere'}]`;
-      const buddy = await runBuddy(prompt);
-      setMode(buddy.mode as any);
-      const response = await callAI(prompt, buddy.mode);
+      const response = await callAI(prompt);
       const clean = response.replace(/```json/g,'').replace(/```/g,'').trim();
       const data = JSON.parse(clean);
       setProjectTools(prev => ({ ...prev, [idx]: data }));
@@ -1022,9 +977,7 @@ export default function App() {
     }, 600);
     try {
       const prompt = `Ești OpenClaw.ai cu 3 agenți: CTO, CFO, SEO. Construiește plan complet pentru: ${project.title} pe ${project.platform}. Răspunde DOAR JSON fără markdown: {"product":"descriere produs","acquisition":"strategie clienti","agents":{"cto":"stack tehnic","cfo":"proiectii financiare","seo":"strategie seo"},"pipeline":["Ziua 1-7: actiuni","Ziua 8-14: actiuni","Luna 1: actiuni","Luna 2-3: actiuni","Luna 4-6: actiuni","Luna 7-12: actiuni"],"openclawSetup":"ghid instalare nvidia api + telegram"}`;
-      const buddy = await runBuddy(prompt);
-      setMode(buddy.mode as any);
-      const response = await callAI(prompt, buddy.mode);
+      const response = await callAI(prompt);
       clearInterval(timer);
       setDevelopProgress(100);
       const clean = response.replace(/```json/g,'').replace(/```/g,'').trim();
@@ -1042,7 +995,7 @@ export default function App() {
     setLuckyLoading(prev => ({ ...prev, [qKey]: true }));
     try {
       const prompt = `Ești un ${selectedJob.title}. Răspunde scurt (maxim 10-15 cuvinte), la persoana a I-a, la următoarea întrebare despre preferințele tale profesionale: "${questionText}". Fii creativ, realist și foarte specific meseriei tale. Nu folosi ghilimele.`;
-      const _luckyText = await callAI(prompt, mode, true);
+      const _luckyText = await callAI(prompt, undefined, true);
       if (_luckyText) { setContextAnswers(prev => ({ ...prev, [qKey]: _luckyText.trim() })); }
     } catch (error) {
       console.error("Error generating lucky answer:", error);
@@ -1076,9 +1029,7 @@ export default function App() {
         - suitabilityQuestions: Un array de 2-3 întrebări de auto-reflecție (string-uri) profunde și specifice pentru a ajuta utilizatorul să-și dea seama exact dacă acest proiect i se potrivește (ex: "Ești confortabil să construiești o audiență de la zero?", "Ai răbdarea necesară pentru a oferi suport 1-la-1?"). Acestea trebuie să fie întrebări la care utilizatorul să răspundă cu Da/Nu sau să reflecteze profund.
       `;
 
-      const buddy = await runBuddy(prompt);
-      setMode(buddy.mode as any);
-      const response = await callAI(prompt, buddy.mode);
+      const response = await callAI(prompt);
 
       if (response) {
         let parsed;
@@ -1173,7 +1124,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 snap-y snap-mandatory scroll-smooth">
-      <ClawStatusBar />
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -1253,7 +1203,7 @@ onClick={() => {}} className="hidden" />
           )}
 
         {/* OPENCLAW PAGE */}
-          {showArsenal && <><ArsenalPage onClose={() => setShowArsenal(false)} /><BuddyArsenalChat /></>}
+        {showArsenal && <ArsenalPage onClose={() => setShowArsenal(false)} />}
         {showAfacere && <AfacereLaCheiePage onClose={() => setShowAfacere(false)} />}
         
         
