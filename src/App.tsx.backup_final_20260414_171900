@@ -1,0 +1,1615 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
+import { 
+  Brain, 
+  Users, 
+  TrendingUp, 
+  Zap, 
+  ShieldCheck, 
+  ArrowRight, 
+  ArrowLeft,
+  Search, 
+  RefreshCcw,
+  AlertTriangle,
+  Coins,
+  Cpu,
+  HeartHandshake,
+  X,
+  CheckCircle2,
+  Download,
+  Mail,
+  User,
+  Briefcase,
+  Youtube,
+  Linkedin,
+  Globe,
+  Rocket,
+  Lightbulb,
+  Share2,
+  Mic,
+  MicOff,
+  Send,
+  MessageSquare,
+  Bot,
+  MessageCircle,
+  Wand2,
+  PlayCircle,
+  BookOpen,
+  Check,
+  Menu
+} from 'lucide-react';
+import { JOBS_LIST, JobData } from './constants';
+import Markdown from 'react-markdown';
+
+// Initialize Gemini
+const callAI = async (prompt: string, system?: string, lucky?: boolean): Promise<string> => {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], systemPrompt: system, lucky: lucky ?? false })
+  });
+  const d = await res.json();
+  return d.text || '';
+};
+
+type ModalType = 'join' | 'eligibility' | 'download' | null;
+
+interface MonetizationProject {
+  title: string;
+  description: string;
+  platform: string;
+  marketingStrategy: string;
+  innovation: string;
+  projectType: string;
+  monetizationMethod: string;
+  suitabilityQuestions: string[];
+}
+
+interface PivotData {
+  pivotStrategy: string;
+  monetizationProjects: MonetizationProject[];
+}
+
+const COLORS = [
+  'from-blue-600 to-indigo-700',
+  'from-purple-600 to-violet-700',
+  'from-emerald-600 to-teal-700',
+  'from-amber-600 to-orange-700',
+  'from-rose-600 to-pink-700'
+];
+
+interface Message {
+  role: 'user' | 'model';
+  text: string;
+}
+
+function ChatAgent({ job, onClose }: { job: JobData, onClose: () => void }) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sessionRef = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const nextPlayTimeRef = useRef<number>(0);
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(`chat_memory_${job.id}`);
+    if (saved) {
+      setMessages(JSON.parse(saved));
+    } else {
+      setMessages([{ role: 'model', text: `Salut! Sunt agentul tău de monetizare pentru **${job.title}**. Ce planuri avem pentru astăzi?` }]);
+    }
+  }, [job.id]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(`chat_memory_${job.id}`, JSON.stringify(messages));
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, job.id]);
+
+  const handleSendText = async () => {
+    if (!inputText.trim() || isLoading) return;
+    const newMessages = [...messages, { role: 'user' as const, text: inputText }];
+    setMessages(newMessages);
+    setInputText('');
+    setIsLoading(true);
+
+    try {
+      const contents = newMessages.map(m => ({
+        role: m.role,
+        parts: [{ text: m.text }]
+      }));
+
+      const response = await callAI(prompt);
+
+      if (response) {
+        setMessages(prev => [...prev, { role: 'model', text: response.text! }]);
+      }
+    } catch (e) {
+      console.error(e);
+      setMessages(prev => [...prev, { role: 'model', text: "A apărut o eroare. Te rog încearcă din nou." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleVoice = async () => {
+    if (isVoiceActive) {
+      stopVoice();
+    } else {
+      startVoice();
+    }
+  };
+
+  const stopVoice = () => {
+    setIsVoiceActive(false);
+    if (sessionRef.current) {
+      sessionRef.current.close();
+      sessionRef.current = null;
+    }
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+  };
+
+  const startVoice = async () => {
+    setIsVoiceActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const audioCtx = new AudioContext({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+      nextPlayTimeRef.current = audioCtx.currentTime;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      const sessionPromise = Promise.resolve(null);
+
+      sessionRef.current = await sessionPromise;
+
+    } catch (e) {
+      console.error("Failed to start voice:", e);
+      stopVoice();
+    }
+  };
+
+  useEffect(() => {
+    return () => stopVoice();
+  }, []);
+
+  return (
+    <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-[400px] h-[80vh] md:h-[600px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
+      {/* Header */}
+      <div className="bg-indigo-600 p-4 flex items-center justify-between text-white">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+            <Bot className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-bold leading-tight">Agent {job.title}</h3>
+            <span className="text-xs text-indigo-200 flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Online
+            </span>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'}`}>
+              <div className={`prose prose-sm max-w-none ${m.role === 'user' ? 'prose-invert' : ''}`}>
+                <Markdown>{m.text}</Markdown>
+              </div>
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm shadow-sm w-[85%] space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Bot className="w-4 h-4 text-indigo-500 animate-pulse" />
+                <span className="text-xs font-bold text-indigo-500 animate-pulse">Agentul procesează...</span>
+              </div>
+              <div className="h-2 bg-slate-200 rounded-full animate-pulse w-3/4"></div>
+              <div className="h-2 bg-slate-200 rounded-full animate-pulse w-full"></div>
+              <div className="h-2 bg-slate-200 rounded-full animate-pulse w-5/6"></div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Voice Active Overlay */}
+      {isVoiceActive && (
+        <div className="absolute inset-0 bg-indigo-900/95 backdrop-blur-sm flex flex-col items-center justify-center text-white z-10">
+          <div className="w-24 h-24 bg-indigo-500/30 rounded-full flex items-center justify-center mb-8 animate-pulse">
+            <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center">
+              <Mic className="w-8 h-8" />
+            </div>
+          </div>
+          <h3 className="text-2xl font-bold mb-2">Mod Vocal Activ</h3>
+          <p className="text-indigo-200 mb-8 text-center px-6">Vorbește cu agentul tău. Conversația vocală este în timp real.</p>
+          <button onClick={toggleVoice} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-bold flex items-center gap-2 transition-all">
+            <MicOff className="w-5 h-5" /> Închide Apelul
+          </button>
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="p-4 bg-white border-t border-slate-200">
+        <div className="flex items-center gap-2">
+          <button onClick={toggleVoice} className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="Apel Vocal">
+            <Mic className="w-6 h-6" />
+          </button>
+          <input
+            type="text"
+            value={inputText}
+            onChange={e => setInputText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSendText()}
+            placeholder="Scrie un mesaj..."
+            className="flex-1 bg-slate-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-full px-4 py-3 outline-none transition-all"
+          />
+          <button onClick={handleSendText} disabled={!inputText.trim() || isLoading} className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-colors">
+            <Send className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlatformChatbot() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'model', text: 'Salut! Sunt asistentul platformei Human Premium. Cu ce te pot ajuta legat de serviciile noastre sau tranziția profesională în era AI?' }
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!chatRef.current) {
+      chatRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isOpen]);
+
+  const handleSendText = async () => {
+    if (!inputText.trim() || isLoading) return;
+    const userText = inputText;
+    setMessages(prev => [...prev, { role: 'user', text: userText }]);
+    setInputText('');
+    setIsLoading(true);
+
+    try {
+      const response = await chatRef.current.sendMessage({ message: userText });
+      if (response) {
+        setMessages(prev => [...prev, { role: 'model', text: response.text }]);
+      }
+    } catch (e) {
+      console.error(e);
+      setMessages(prev => [...prev, { role: 'model', text: "A apărut o eroare. Te rog încearcă din nou." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-4 left-4 md:bottom-8 md:left-8 bg-slate-800 text-white p-3 md:p-4 rounded-full shadow-2xl hover:bg-slate-900 hover:scale-110 transition-all z-40 flex items-center gap-3"
+        >
+          <MessageCircle className="w-6 h-6" />
+          <span className="font-bold pr-2 hidden md:inline">Suport Platformă</span>
+        </button>
+      )}
+
+      {isOpen && (
+        <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 w-[calc(100vw-2rem)] md:w-[400px] h-[80vh] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden z-50">
+          <div className="bg-slate-800 p-4 flex items-center justify-between text-white">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                <MessageCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold leading-tight">Suport Human Premium</h3>
+                <span className="text-xs text-slate-300 flex items-center gap-1">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Online
+                </span>
+              </div>
+            </div>
+            <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-slate-800 text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'}`}>
+                  <div className={`prose prose-sm max-w-none ${m.role === 'user' ? 'prose-invert' : ''}`}>
+                    <Markdown>{m.text}</Markdown>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm shadow-sm w-[85%] space-y-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MessageCircle className="w-4 h-4 text-slate-500 animate-pulse" />
+                    <span className="text-xs font-bold text-slate-500 animate-pulse">Platforma răspunde...</span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full animate-pulse w-3/4"></div>
+                  <div className="h-2 bg-slate-200 rounded-full animate-pulse w-full"></div>
+                  <div className="h-2 bg-slate-200 rounded-full animate-pulse w-5/6"></div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="p-4 bg-white border-t border-slate-200">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={inputText}
+                onChange={e => setInputText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSendText()}
+                placeholder="Întreabă ceva..."
+                className="flex-1 bg-slate-100 border-transparent focus:bg-white focus:border-slate-500 focus:ring-2 focus:ring-slate-200 rounded-full px-4 py-3 outline-none transition-all"
+              />
+              <button onClick={handleSendText} disabled={!inputText.trim() || isLoading} className="p-3 bg-slate-800 text-white rounded-full hover:bg-slate-900 disabled:opacity-50 disabled:hover:bg-slate-800 transition-colors">
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
+  const [pivotData, setPivotData] = useState<PivotData | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [contextAnswers, setContextAnswers] = useState({ q1: '', q2: '', q3: '' });
+  const [luckyLoading, setLuckyLoading] = useState({ q1: false, q2: false, q3: false });
+  
+  // Refs for scrolling
+  const pivotRef = useRef<HTMLDivElement>(null);
+  const pricingRef = useRef<HTMLDivElement>(null);
+  const missionRef = useRef<HTMLDivElement>(null);
+  const principlesRef = useRef<HTMLDivElement>(null);
+  const diffRef = useRef<HTMLDivElement>(null);
+  const methodologyRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLDivElement>(null);
+  const dividendRef = useRef<HTMLDivElement>(null);
+  const projectsRef = useRef<HTMLDivElement>(null);
+
+  const filteredJobs = JOBS_LIST.filter(job => 
+    job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    job.category.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const categoryRiskData = useMemo(() => {
+    const categories: Record<string, { total: number, count: number }> = {};
+    JOBS_LIST.forEach(job => {
+      if (!categories[job.category]) {
+        categories[job.category] = { total: 0, count: 0 };
+      }
+      categories[job.category].total += job.automationRisk;
+      categories[job.category].count += 1;
+    });
+    
+    return Object.keys(categories).map(cat => ({
+      name: cat,
+      risk: Math.round(categories[cat].total / categories[cat].count)
+    })).sort((a, b) => b.risk - a.risk);
+  }, []);
+
+  const handleJobSelect = (job: JobData) => {
+    setSelectedJob(job);
+    setPivotData(null);
+    setContextAnswers({ q1: '', q2: '', q3: '' });
+    setLuckyLoading({ q1: false, q2: false, q3: false });
+    setTimeout(() => {
+      pivotRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  const generateLuckyAnswer = async (qKey: 'q1' | 'q2' | 'q3', questionText: string) => {
+    if (!selectedJob) return;
+    setLuckyLoading(prev => ({ ...prev, [qKey]: true }));
+    try {
+      const prompt = `Ești un ${selectedJob.title}. Răspunde scurt (maxim 10-15 cuvinte), la persoana a I-a, la următoarea întrebare despre preferințele tale profesionale: "${questionText}". Fii creativ, realist și foarte specific meseriei tale. Nu folosi ghilimele.`;
+      const _luckyText = await callAI(prompt, undefined, true);
+      if (_luckyText) { setContextAnswers(prev => ({ ...prev, [qKey]: _luckyText.trim() })); }
+    } catch (error) {
+      console.error("Error generating lucky answer:", error);
+    } finally {
+      setLuckyLoading(prev => ({ ...prev, [qKey]: false }));
+    }
+  };
+
+  const generatePivotStrategy = async (job: JobData, context: {q1: string, q2: string, q3: string}) => {
+    setIsGenerating(true);
+    setPivotData(null);
+    
+    try {
+      const prompt = `Generează o strategie de pivotare pentru meseria de "${job.title}".
+      Contextul specific al utilizatorului:
+      - Ce îi place să facă: ${context.q1 || 'Nespecificat'}
+      - Cu cine preferă să lucreze: ${context.q2 || 'Nespecificat'}
+      - Timp și obiective: ${context.q3 || 'Nespecificat'}
+      
+      Trebuie să returnezi un obiect JSON cu următoarea structură:
+      - pivotStrategy: Un text în format Markdown cu strategia generală (propunere de valoare, abilități cheie, plan de acțiune, AI ca asistent).
+      - monetizationProjects: Un array de exact 5 obiecte, fiecare reprezentând un proiect de monetizare.
+        Fiecare proiect trebuie să aibă:
+        - title: Titlul proiectului (ex: ${job.pivot1})
+        - description: O descriere FOARTE EXTINSĂ și detaliată (minim 5-6 propoziții). Explică pas cu pas exact cum funcționează acest proiect în practică, de ce este extrem de valoros pentru clienți/utilizatori și cum se aliniază perfect cu contextul și abilitățile utilizatorului. Fii foarte specific și oferă exemple concrete de aplicare.
+        - platform: Platforma recomandată (ex: YouTube, LinkedIn)
+        - marketingStrategy: Strategia de marketing
+        - innovation: Elementul de inovație
+        - projectType: Tipul proiectului (ex: Conținut Video, Consultanță)
+        - monetizationMethod: Metoda de monetizare (ex: AdSense, Abonament)
+        - suitabilityQuestions: Un array de 2-3 întrebări de auto-reflecție (string-uri) profunde și specifice pentru a ajuta utilizatorul să-și dea seama exact dacă acest proiect i se potrivește (ex: "Ești confortabil să construiești o audiență de la zero?", "Ai răbdarea necesară pentru a oferi suport 1-la-1?"). Acestea trebuie să fie întrebări la care utilizatorul să răspundă cu Da/Nu sau să reflecteze profund.
+      `;
+
+      const response = await callAI(prompt);
+
+      if (response) {
+        const data = JSON.parse(response);
+        setPivotData(data);
+      } else {
+        throw new Error("Empty response");
+      }
+      
+      // Scroll to projects after a delay
+      setTimeout(() => {
+        projectsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } catch (error) {
+      console.error("Error generating strategy:", error);
+      setPivotData({
+        pivotStrategy: "Eroare la generarea strategiei. Te rugăm să încerci din nou.",
+        monetizationProjects: []
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadPlan = () => {
+    if (!pivotData || !selectedJob) return;
+    
+    const content = `PLAN DE PIVOTARE: ${selectedJob.title}\n\n` +
+      `STRATEGIE:\n${pivotData.pivotStrategy}\n\n` +
+      `PROIECTE DE MONETIZARE:\n` +
+      pivotData.monetizationProjects.map((p, i) => 
+        `${i+1}. ${p.title}\n   Tip: ${p.projectType}\n   Monetizare: ${p.monetizationMethod}\n   Platformă: ${p.platform}\n   Descriere: ${p.description}\n   Marketing: ${p.marketingStrategy}\n   Inovație: ${p.innovation}\n`
+      ).join('\n');
+
+    const element = document.createElement("a");
+    const file = new Blob([content], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = `Plan_DaRomania_${selectedJob.title.replace(/\s+/g, '_')}.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 snap-y snap-mandatory scroll-smooth">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
+            <div className="bg-indigo-600 p-2 rounded-xl">
+              <HeartHandshake className="text-white w-6 h-6" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-slate-900">Da<span className="text-indigo-600">România</span></span>
+          </div>
+          
+          {/* Desktop Nav */}
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+            <button onClick={() => scrollTo(missionRef)} className="hover:text-indigo-600 transition-colors">Misiune</button>
+            <button onClick={() => scrollTo(principlesRef)} className="hover:text-indigo-600 transition-colors">Principii</button>
+            <button onClick={() => scrollTo(methodologyRef)} className="hover:text-indigo-600 transition-colors">Metodologie</button>
+            <button onClick={() => scrollTo(pivotRef)} className="hover:text-indigo-600 transition-colors">Găsește-ți Meseria</button>
+            <button onClick={() => scrollTo(pricingRef)} className="hover:text-indigo-600 transition-colors">Prețuri</button>
+            <button 
+              onClick={() => setActiveModal('join')}
+              className="bg-slate-900 text-white px-5 py-2.5 rounded-full hover:bg-slate-800 transition-all shadow-sm"
+            >
+              Alătură-te Rețelei
+            </button>
+          </nav>
+
+          {/* Mobile Menu Toggle */}
+          <button 
+            className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+
+        {/* Mobile Nav */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="md:hidden bg-white border-b border-slate-200 overflow-hidden"
+            >
+              <div className="px-4 py-6 flex flex-col gap-4">
+                <button onClick={() => { scrollTo(missionRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Misiune</button>
+                <button onClick={() => { scrollTo(principlesRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Principii</button>
+                <button onClick={() => { scrollTo(methodologyRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Metodologie</button>
+                <button onClick={() => { scrollTo(pivotRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Găsește-ți Meseria</button>
+                <button onClick={() => { scrollTo(pricingRef); setIsMobileMenuOpen(false); }} className="text-left text-lg font-medium text-slate-600 hover:text-indigo-600 py-2">Prețuri</button>
+                <button 
+                  onClick={() => { setActiveModal('join'); setIsMobileMenuOpen(false); }}
+                  className="bg-slate-900 text-white px-5 py-3 rounded-xl hover:bg-slate-800 transition-all shadow-sm mt-2 font-bold"
+                >
+                  Alătură-te Rețelei
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
+
+      <main className="w-full">
+        {/* Hero Section - FULL SCREEN */}
+        <section className="min-h-screen flex flex-col items-center justify-center text-center snap-start px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-5xl mx-auto"
+          >
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-semibold mb-6 border border-indigo-100">
+              <Rocket className="w-4 h-4" /> Călătoria succesului tău este motivația noastră!
+            </span>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 mb-8 tracking-tight leading-tight">
+              Noi te ajutăm să excelezi în ceea ce iubești, <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">să nu mai simți că muncești o zi din viață!</span>
+            </h1>
+            <p className="text-xl md:text-2xl text-slate-600 max-w-3xl mx-auto mb-12 leading-relaxed font-medium">
+              99 de meserii în pericol de automatizare. 99 de planuri de business construite pe experiența ta. O singură misiune — să nu pierzi nimic din ce contează cu adevărat.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button 
+                onClick={() => pivotRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                className="w-full sm:w-auto bg-indigo-600 text-white px-10 py-5 rounded-full text-xl font-black hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3"
+              >
+                Găsește-ți meseria <ArrowRight className="w-6 h-6" />
+              </button>
+              <button 
+                onClick={() => methodologyRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                className="w-full sm:w-auto bg-white text-slate-900 border-2 border-slate-200 px-10 py-5 rounded-full text-xl font-black hover:border-indigo-600 hover:text-indigo-600 transition-all flex items-center justify-center gap-3"
+              >
+                Vezi cum funcționează
+              </button>
+            </div>
+
+            <motion.div 
+              animate={{ y: [0, 10, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="mt-20 flex flex-col items-center gap-2 text-slate-400"
+            >
+              <span className="text-xs font-bold uppercase tracking-widest">Scroll pentru a explora</span>
+              <div className="w-px h-12 bg-gradient-to-b from-indigo-600 to-transparent" />
+            </motion.div>
+          </motion.div>
+        </section>
+
+        <section ref={pivotRef} className="min-h-screen w-full bg-slate-50 snap-start relative overflow-hidden py-24 px-4">
+          {!selectedJob ? (
+            <div className="max-w-7xl mx-auto flex flex-col h-full">
+              <div className="text-center mb-12">
+                <h2 className="text-4xl md:text-6xl font-black mb-6 flex items-center justify-center gap-4 text-slate-900">
+                  <AlertTriangle className="text-amber-500 w-10 h-10 md:w-12 md:h-12" /> 
+                  Index Automatizare
+                </h2>
+                <p className="text-xl text-slate-600 font-medium max-w-2xl mx-auto mb-8">
+                  Caută profesia ta și descoperă cum poți transforma riscul de automatizare într-un avantaj competitiv imposibil de replicat.
+                </p>
+                <div className="relative max-w-2xl mx-auto">
+                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
+                  <input 
+                    type="text" 
+                    placeholder="Caută meseria ta..."
+                    className="w-full pl-16 pr-6 py-5 rounded-full border-2 border-slate-200 shadow-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-xl font-medium"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div className="mt-6 text-slate-500 font-bold text-lg">{filteredJobs.length} meserii identificate</div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pb-20">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <AnimatePresence mode="popLayout">
+                    {filteredJobs.map((job) => (
+                      <motion.button
+                        key={job.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        onClick={() => handleJobSelect(job)}
+                        className="w-full p-8 rounded-[2rem] border-2 border-slate-200 bg-white hover:border-indigo-300 hover:shadow-xl text-left transition-all group flex flex-col h-full"
+                      >
+                        <div className="flex justify-between items-start mb-6">
+                          <span className="text-sm font-black uppercase tracking-widest text-slate-400 group-hover:text-indigo-500 transition-colors">
+                            {job.category}
+                          </span>
+                          <div className="flex items-center gap-1 text-amber-600 font-black text-xl bg-amber-50 px-3 py-1 rounded-full">
+                            <TrendingUp className="w-5 h-5" />
+                            {job.automationRisk}%
+                          </div>
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-800 mb-4 group-hover:text-indigo-700 transition-colors leading-tight">
+                          {job.title}
+                        </h3>
+                        <p className="text-slate-500 font-medium mb-6 flex-1">
+                          Descoperă cum poți transforma experiența ta de {job.title.toLowerCase()} într-un business profitabil în era AI.
+                        </p>
+                        <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden shadow-inner mb-6">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${job.automationRisk}%` }}
+                            className={`h-full shadow-sm ${job.automationRisk > 80 ? 'bg-gradient-to-r from-rose-500 to-pink-500' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}
+                          />
+                        </div>
+                        <div className="text-sm text-slate-600 font-bold flex items-center gap-2 border-t border-slate-100 pt-6">
+                          <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                          5 idei de business incluse
+                        </div>
+                      </motion.button>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="fixed inset-0 z-50 md:relative md:inset-auto max-w-5xl mx-auto bg-white md:rounded-[3rem] shadow-2xl md:border border-slate-200 overflow-hidden flex flex-col h-[100dvh] md:h-[90vh]">
+              {/* Header with Back Button */}
+              <div className="p-4 md:p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
+                <button 
+                  onClick={() => { setSelectedJob(null); setPivotData(null); }}
+                  className="flex items-center gap-2 text-indigo-600 font-black px-4 py-2 md:px-6 md:py-3 bg-indigo-50 hover:bg-indigo-100 transition-colors rounded-full"
+                >
+                  <ArrowLeft className="w-5 h-5" /> <span className="hidden sm:inline">Înapoi la Index</span>
+                </button>
+                <div className="font-black text-slate-900 text-lg md:text-xl text-right">{selectedJob.title}</div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 md:p-12 relative">
+                {isGenerating ? (
+                  <div className="max-w-4xl mx-auto pb-32 w-full animate-pulse">
+                    <div className="flex items-center justify-between mb-12">
+                      <div className="p-6 bg-indigo-50 rounded-3xl border-2 border-indigo-100 w-full md:w-2/3">
+                        <div className="h-4 bg-indigo-200 rounded w-1/4 mb-4"></div>
+                        <div className="h-8 bg-indigo-200 rounded w-3/4"></div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-6 mb-16">
+                      <div className="h-10 bg-slate-200 rounded w-1/3 mb-8"></div>
+                      <div className="h-4 bg-slate-200 rounded w-full"></div>
+                      <div className="h-4 bg-slate-200 rounded w-full"></div>
+                      <div className="h-4 bg-slate-200 rounded w-5/6"></div>
+                      <div className="h-4 bg-slate-200 rounded w-full mt-8"></div>
+                      <div className="h-4 bg-slate-200 rounded w-4/5"></div>
+                      <div className="h-4 bg-slate-200 rounded w-full"></div>
+                    </div>
+
+                    <div className="w-full h-24 bg-indigo-100 rounded-[2.5rem]"></div>
+                    
+                    {/* Progress indicator overlay */}
+                    <div className="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-white px-8 py-4 rounded-full shadow-2xl border border-indigo-100 flex items-center gap-4 z-50 w-[90%] md:w-auto justify-center">
+                      <RefreshCcw className="w-6 h-6 text-indigo-600 animate-spin" />
+                      <span className="font-bold text-indigo-900 truncate">Generăm strategia pentru {selectedJob.title}...</span>
+                    </div>
+                  </div>
+                ) : !pivotData ? (
+                  <div className="max-w-3xl mx-auto pb-32">
+                    <div className="flex items-center justify-between mb-12">
+                      <div className="p-6 bg-indigo-50 rounded-3xl border-2 border-indigo-100 inline-block">
+                        <h4 className="text-indigo-900 font-black text-sm uppercase tracking-[0.2em] mb-2">Pasul 1: Context</h4>
+                        <p className="text-indigo-700 text-2xl font-black m-0">Personalizează strategia pentru {selectedJob.title}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white border-2 border-slate-100 rounded-3xl p-8 shadow-sm space-y-6">
+                      <div>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
+                          <label className="block text-lg font-bold text-slate-900">
+                            1. Ce îți place cel mai mult să faci în activitatea ta?
+                          </label>
+                          <button
+                            onClick={() => generateLuckyAnswer('q1', 'Ce îți place cel mai mult să faci în activitatea ta?')}
+                            disabled={luckyLoading.q1}
+                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
+                          >
+                            {luckyLoading.q1 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                            I'm feeling lucky
+                          </button>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={contextAnswers.q1}
+                          onChange={(e) => setContextAnswers({...contextAnswers, q1: e.target.value})}
+                          placeholder="Ex: Să analizez date, să vorbesc cu clienții, să creez strategii..."
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
+                          <label className="block text-lg font-bold text-slate-900">
+                            2. Cu ce tip de clienți sau colegi preferi să lucrezi?
+                          </label>
+                          <button
+                            onClick={() => generateLuckyAnswer('q2', 'Cu ce tip de clienți sau colegi preferi să lucrezi?')}
+                            disabled={luckyLoading.q2}
+                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
+                          >
+                            {luckyLoading.q2 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                            I'm feeling lucky
+                          </button>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={contextAnswers.q2}
+                          onChange={(e) => setContextAnswers({...contextAnswers, q2: e.target.value})}
+                          placeholder="Ex: Antreprenori, corporații, echipe mici, studenți..."
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-3">
+                          <label className="block text-lg font-bold text-slate-900">
+                            3. Cât timp poți aloca și care este obiectivul tău principal?
+                          </label>
+                          <button
+                            onClick={() => generateLuckyAnswer('q3', 'Cât timp poți aloca și care este obiectivul tău principal?')}
+                            disabled={luckyLoading.q3}
+                            className="flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 self-start sm:self-auto shrink-0"
+                          >
+                            {luckyLoading.q3 ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                            I'm feeling lucky
+                          </button>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={contextAnswers.q3}
+                          onChange={(e) => setContextAnswers({...contextAnswers, q3: e.target.value})}
+                          placeholder="Ex: 10 ore/săptămână, vreau un venit suplimentar stabil..."
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg transition-all resize-none"
+                        />
+                      </div>
+                      <div className="mt-8 flex justify-end">
+                        <button
+                          onClick={() => generatePivotStrategy(selectedJob, contextAnswers)}
+                          className="bg-indigo-600 text-white px-8 py-4 rounded-full text-xl font-black hover:bg-indigo-700 transition-all shadow-lg hover:shadow-xl flex items-center gap-3"
+                        >
+                          Generează Strategia <ArrowRight className="w-6 h-6" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="max-w-4xl mx-auto pb-32"
+                  >
+                    <div className="flex items-center justify-between mb-12">
+                      <div className="p-6 bg-indigo-50 rounded-3xl border-2 border-indigo-100 inline-block">
+                        <h4 className="text-indigo-900 font-black text-sm uppercase tracking-[0.2em] mb-2">Context Actual</h4>
+                        <p className="text-indigo-700 text-2xl font-black m-0">Ești un {selectedJob.title}. Iată cum devii de neînlocuit:</p>
+                      </div>
+                    </div>
+                    
+                    <div className="prose prose-base md:prose-lg prose-indigo max-w-none mb-16">
+                      <div className="markdown-body">
+                        <Markdown>{pivotData?.pivotStrategy}</Markdown>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleDownloadPlan}
+                      className="w-full bg-indigo-600 text-white py-8 rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-4 hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-200 hover:scale-[1.02]"
+                    >
+                      Descarcă Planul Complet <Download className="w-8 h-8" />
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+
+        {/* PRICING SECTION */}
+        <section ref={pricingRef} className="py-24 md:py-32 bg-slate-900 text-white snap-start px-4 relative overflow-hidden">
+          <div className="max-w-7xl mx-auto relative z-10">
+            <div className="text-center mb-20">
+              <h2 className="text-4xl md:text-6xl font-black mb-6">Investiția în Viitorul Tău</h2>
+              <p className="text-xl text-indigo-300 font-medium max-w-3xl mx-auto">
+                Totul este gratuit până în momentul în care decizi să lansezi un proiect. Fără taxe ascunse, fără surprize.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+              {/* Pachet 1 */}
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-[2.5rem] p-8 flex flex-col hover:bg-white/10 transition-colors">
+                <h3 className="text-2xl font-black mb-2">Lansare Proiect</h3>
+                <p className="text-slate-400 mb-6 flex-1">Singura și unica taxă pentru a lansa un proiect real.</p>
+                <div className="mb-8">
+                  <span className="text-5xl font-black">$9</span>
+                  <span className="text-slate-400">/lună</span>
+                </div>
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">1 Proiect activ</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">Vrei 2 proiecte? Plătești $9/lună per proiect.</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">Agent Openclaw.ai inclus pentru execuție</span>
+                  </li>
+                </ul>
+                <button className="w-full py-4 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors mt-auto">Alege Pachetul</button>
+              </div>
+
+              {/* Pachet 2 */}
+              <div className="bg-indigo-600 rounded-[2.5rem] p-8 flex flex-col relative transform md:-translate-y-4 shadow-2xl shadow-indigo-900/50">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-amber-400 text-amber-950 text-xs font-black px-4 py-1 rounded-full uppercase tracking-widest">Recomandat</div>
+                <h3 className="text-2xl font-black mb-2 text-white">Academy DaRomania</h3>
+                <p className="text-indigo-200 mb-6 flex-1">Acces complet la rețeaua de succes.</p>
+                <div className="mb-8">
+                  <span className="text-5xl font-black text-white">$19</span>
+                  <span className="text-indigo-200">/lună</span>
+                </div>
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-300 shrink-0 mt-0.5" />
+                    <span className="text-sm text-white">Tot ce include pachetul de $9</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-300 shrink-0 mt-0.5" />
+                    <span className="text-sm text-white">Acces în Academy DaRomania</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-300 shrink-0 mt-0.5" />
+                    <span className="text-sm text-white">Vezi proiectele și succesul monetizat al rețelei</span>
+                  </li>
+                </ul>
+                <button className="w-full py-4 rounded-full bg-white text-indigo-600 hover:bg-indigo-50 font-black transition-colors mt-auto">Alege Pachetul</button>
+              </div>
+
+              {/* Pachet 3 */}
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-[2.5rem] p-8 flex flex-col hover:bg-white/10 transition-colors">
+                <h3 className="text-2xl font-black mb-2">Mentor 1:1</h3>
+                <p className="text-slate-400 mb-6 flex-1">Îndrumare directă de la experți.</p>
+                <div className="mb-8">
+                  <span className="text-5xl font-black">€99</span>
+                  <span className="text-slate-400">/lună</span>
+                </div>
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">Tot ce include pachetul Academy</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">1 ședință/săptămână de 2 ore</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">Sesiuni cu un colaborator din academie</span>
+                  </li>
+                </ul>
+                <button className="w-full py-4 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors mt-auto">Alege Pachetul</button>
+              </div>
+
+              {/* Pachet 4 */}
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-[2.5rem] p-8 flex flex-col hover:bg-white/10 transition-colors">
+                <h3 className="text-2xl font-black mb-2">Sergiu Live 1:1</h3>
+                <p className="text-slate-400 mb-6 flex-1">Experiența supremă de mentorat.</p>
+                <div className="mb-8">
+                  <span className="text-5xl font-black">€899</span>
+                  <span className="text-slate-400">/lună</span>
+                </div>
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">Tot ce include pachetul Academy</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">1 ședință/săptămână de 2 ore</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                    <span className="text-sm text-slate-300">Sesiuni 1:1 direct cu Sergiu</span>
+                  </li>
+                </ul>
+                <button className="w-full py-4 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors mt-auto">Alege Pachetul</button>
+              </div>
+            </div>
+
+            <div className="mt-16 bg-white/5 backdrop-blur-lg border border-white/10 rounded-3xl p-8 text-center max-w-4xl mx-auto">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <Bot className="w-8 h-8 text-indigo-400" />
+                <h3 className="text-2xl font-black">Agent Openclaw.ai Inclus</h3>
+              </div>
+              <p className="text-slate-300 text-lg">
+                Pentru orice proiect lansat, se creează automat un Agent (Openclaw.ai) care duce proiectul la cap. Tu doar îl urmărești cum îți execută viziunea!
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Chat Agent Floating Button */}
+        {!isChatOpen && selectedJob && (
+          <button
+            onClick={() => setIsChatOpen(true)}
+            className="fixed bottom-4 right-4 md:bottom-8 md:right-8 bg-indigo-600 text-white p-3 md:p-4 rounded-full shadow-2xl hover:bg-indigo-700 hover:scale-110 transition-all z-40 flex items-center gap-3"
+          >
+            <div className="relative">
+              <Brain className="w-6 h-6" />
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 border-2 border-indigo-600 rounded-full"></span>
+            </div>
+            <span className="font-bold pr-2 hidden md:inline">Agent Monetizare</span>
+          </button>
+        )}
+
+        {/* Chat Agent Window */}
+        {isChatOpen && selectedJob && (
+          <ChatAgent job={selectedJob} onClose={() => setIsChatOpen(false)} />
+        )}
+
+        {/* Platform Chatbot */}
+        <PlatformChatbot />
+
+        {/* AI Dividend Section - FULL SCREEN */}
+        <section ref={dividendRef} className="min-h-screen w-full bg-indigo-600 flex items-center justify-center snap-start py-20 px-4 md:px-12">
+          <div className="max-w-7xl mx-auto w-full flex flex-col lg:flex-row items-center gap-16">
+            <div className="flex-1 text-white">
+              <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-white/10 border border-white/20 backdrop-blur-md mb-8">
+                <Coins className="w-6 h-6 text-yellow-300" />
+                <span className="text-xl font-bold tracking-widest uppercase text-yellow-300">Fondul de Tranziție</span>
+              </div>
+              <h2 className="text-5xl md:text-8xl font-black mb-8 leading-tight">
+                AI Dividend <br/>Program
+              </h2>
+              <p className="text-2xl md:text-4xl text-indigo-100 mb-12 leading-relaxed font-medium">
+                Companiile care automatizează roluri umane contribuie la un fond de tranziție global. 
+                <span className="text-white font-black block mt-4">Verifică dacă ești eligibil pentru grantul tău de tranziție.</span>
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <button 
+                  onClick={() => setActiveModal('eligibility')}
+                  className="w-full sm:w-auto bg-yellow-400 text-slate-900 px-12 py-6 rounded-full text-2xl font-black hover:bg-yellow-300 transition-all shadow-[0_0_40px_rgba(250,204,21,0.4)] hover:scale-105"
+                >
+                  Verifică Eligibilitatea
+                </button>
+                <div className="flex items-center gap-4 px-8 py-6 rounded-full bg-black/20 backdrop-blur-md border border-white/10">
+                  <div className="w-4 h-4 bg-green-400 rounded-full animate-pulse shadow-[0_0_15px_rgba(74,222,128,0.8)]" />
+                  <span className="text-xl font-bold text-white">12.4k Granturi acordate luna aceasta</span>
+                </div>
+              </div>
+            </div>
+            <div className="hidden lg:flex flex-1 justify-center relative">
+              <div className="absolute inset-0 bg-yellow-400/20 blur-[100px] rounded-full" />
+              <Coins className="w-96 h-96 text-yellow-400 relative z-10 drop-shadow-2xl" />
+            </div>
+          </div>
+        </section>
+
+        {/* Monetization Projects Section - FULL SCREEN VERTICAL STACK */}
+        <AnimatePresence>
+          {pivotData && pivotData.monetizationProjects.length > 0 && (
+            <div ref={projectsRef}>
+              <section className="min-h-screen w-full flex flex-col items-center justify-center snap-start bg-slate-50 px-4">
+                <div className="max-w-7xl mx-auto text-center">
+                  <h2 className="text-5xl md:text-7xl font-black mb-6 tracking-tight text-slate-900">5 Proiecte de Monetizare Premium</h2>
+                  <p className="text-slate-600 text-2xl max-w-3xl mx-auto">Idei inovatoare pentru a-ți transforma expertiza în fluxuri de venit sustenabile.</p>
+                  <motion.div 
+                    animate={{ y: [0, 10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="mt-16 flex flex-col items-center gap-2 text-slate-400"
+                  >
+                    <span className="text-xs font-bold uppercase tracking-widest">Scroll pentru proiecte</span>
+                    <div className="w-px h-12 bg-gradient-to-b from-indigo-600 to-transparent" />
+                  </motion.div>
+                </div>
+              </section>
+
+              <div className="space-y-0">
+                {pivotData.monetizationProjects.map((project, idx) => (
+                  <motion.section
+                    key={idx}
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    viewport={{ once: true, margin: "-100px" }}
+                    className={`min-h-screen w-full flex items-center justify-center p-4 md:p-8 sticky top-0 snap-start bg-gradient-to-br ${COLORS[idx]}`}
+                  >
+                    <div className="max-w-6xl w-full max-h-[95vh] overflow-y-auto custom-scrollbar bg-white/10 backdrop-blur-3xl rounded-[3rem] border border-white/20 p-6 md:p-12 shadow-2xl text-white">
+                      <div className="flex flex-col lg:flex-row gap-10 items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-6 mb-8">
+                            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center shadow-inner flex-shrink-0">
+                              {idx === 0 && <Youtube className="w-8 h-8" />}
+                              {idx === 1 && <Linkedin className="w-8 h-8" />}
+                              {idx === 2 && <Globe className="w-8 h-8" />}
+                              {idx === 3 && <Rocket className="w-8 h-8" />}
+                              {idx === 4 && <Lightbulb className="w-8 h-8" />}
+                            </div>
+                            <div>
+                              <span className="text-xs font-black uppercase tracking-[0.3em] opacity-60 block mb-1">{project.platform}</span>
+                              <h3 className="text-3xl md:text-5xl font-black leading-tight tracking-tight">{project.title}</h3>
+                            </div>
+                          </div>
+
+                          <div className="grid md:grid-cols-2 gap-6 mb-8">
+                            <div className="bg-white/10 rounded-[2rem] p-6 border border-white/10 shadow-lg">
+                              <h4 className="text-indigo-200 font-black text-[10px] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <Briefcase className="w-4 h-4" /> Tip Proiect
+                              </h4>
+                              <p className="text-xl md:text-2xl font-black">{project.projectType}</p>
+                            </div>
+                            <div className="bg-white/10 rounded-[2rem] p-6 border border-white/10 shadow-lg">
+                              <h4 className="text-emerald-200 font-black text-[10px] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <Coins className="w-4 h-4" /> Metodă Monetizare
+                              </h4>
+                              <p className="text-xl md:text-2xl font-black">{project.monetizationMethod}</p>
+                            </div>
+                          </div>
+
+                          <p className="text-lg md:text-xl leading-relaxed font-medium opacity-95 mb-8 max-w-4xl">
+                            {project.description}
+                          </p>
+                          
+                          {project.suitabilityQuestions && project.suitabilityQuestions.length > 0 && (
+                            <div className="bg-white/5 rounded-[1.5rem] p-6 border border-white/10 max-w-4xl">
+                              <h4 className="text-white/60 font-black text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                                <MessageCircle className="w-4 h-4" /> Este acest proiect pentru tine?
+                              </h4>
+                              <ul className="space-y-3">
+                                {project.suitabilityQuestions.map((q, qIdx) => (
+                                  <li key={qIdx} className="flex items-start gap-3 text-base md:text-lg font-medium">
+                                    <span className="text-indigo-300 mt-1">?</span>
+                                    <span>{q}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="w-full lg:w-80 space-y-6 flex-shrink-0">
+                          <div className="bg-black/20 rounded-[2rem] p-6 border border-white/5 shadow-xl">
+                            <h4 className="text-white/40 font-black text-[10px] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                              <Share2 className="w-4 h-4" /> Strategie Marketing
+                            </h4>
+                            <p className="text-base leading-relaxed font-medium">{project.marketingStrategy}</p>
+                          </div>
+                          <div className="bg-black/20 rounded-[2rem] p-6 border border-white/5 shadow-xl">
+                            <h4 className="text-white/40 font-black text-[10px] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                              <Zap className="w-4 h-4" /> Inovație Cheie
+                            </h4>
+                            <p className="text-base leading-relaxed font-medium">{project.innovation}</p>
+                          </div>
+                          <button 
+                            onClick={() => setActiveModal('join')}
+                            className="w-full bg-white text-slate-900 py-4 rounded-[1.5rem] text-lg font-black hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 shadow-2xl shadow-black/20"
+                          >
+                            Lansează proiectul <ArrowRight className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.section>
+                ))}
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Features Section - FULL SCREEN */}
+        <section ref={missionRef} className="min-h-screen flex flex-col items-center justify-center snap-start py-20 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto w-full">
+            <div className="text-center mb-16">
+              <h2 className="text-4xl md:text-6xl font-black mb-4">Misiunea Noastră</h2>
+              <p className="text-slate-600 text-xl max-w-2xl mx-auto">Protejăm valoarea umană într-o lume dominată de algoritmi.</p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-8 w-full">
+              <div className="p-12 rounded-[3rem] bg-white border border-slate-100 shadow-xl hover:shadow-indigo-100 transition-all">
+                <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-8 relative group cursor-help">
+                  <ShieldCheck className="text-indigo-600 w-8 h-8" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-slate-900 text-white text-sm rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-xl z-10 text-center">
+                    Verifică și validează deciziile AI pentru a asigura conformitatea etică, lipsa prejudecăților și alinierea cu valorile umane.
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-4">Audit Etic AI</h3>
+                <p className="text-slate-600 text-lg leading-relaxed">
+                  Fostul tău job de corector sau editor devine acum un rol de Auditor Etic pentru conținutul generat de AI.
+                </p>
+              </div>
+              <div className="p-12 rounded-[3rem] bg-white border border-slate-100 shadow-xl hover:shadow-violet-100 transition-all">
+                <div className="w-16 h-16 bg-violet-50 rounded-2xl flex items-center justify-center mb-8 relative group cursor-help">
+                  <Users className="text-violet-600 w-8 h-8" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-slate-900 text-white text-sm rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-xl z-10 text-center">
+                    Oferă nuanța emoțională și culturală pe care AI-ul nu o poate înțelege. Construiește relații bazate pe încredere și empatie.
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-4">Consultanță Contextuală</h3>
+                <p className="text-slate-600 text-lg leading-relaxed">
+                  AI-ul știe datele, tu știi oamenii. Transformă-ți experiența în brokeraj sau vânzări în management de relații complexe.
+                </p>
+              </div>
+              <div className="p-12 rounded-[3rem] bg-white border border-slate-100 shadow-xl hover:shadow-amber-100 transition-all">
+                <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mb-8 relative group cursor-help">
+                  <Cpu className="text-amber-600 w-8 h-8" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-slate-900 text-white text-sm rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 shadow-xl z-10 text-center">
+                    Coordonează și integrează multiple sisteme AI pentru a crea fluxuri de lucru complexe, maximizând eficiența și productivitatea.
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-4">AI Orchestration</h3>
+                <p className="text-slate-600 text-lg leading-relaxed">
+                  Nu lupta cu AI-ul, dirijează-l. Învățăm profesioniștii cum să folosească 10 unelte AI pentru a face munca a 100 de oameni.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {activeModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveModal(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <button 
+                onClick={() => setActiveModal(null)}
+                className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+
+              {activeModal === 'join' && <JoinForm onClose={() => setActiveModal(null)} />}
+              {activeModal === 'eligibility' && <EligibilityCheck onClose={() => setActiveModal(null)} />}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+        {/* ABOUT / MISIUNEA NOASTRĂ */}
+        <section ref={missionRef} className="py-24 md:py-32 bg-slate-50 snap-start px-4 border-t border-slate-200">
+          <div className="max-w-4xl mx-auto text-center">
+            <h2 className="text-4xl md:text-6xl font-black mb-12 text-slate-900">De ce există DaRomânia</h2>
+            <div className="prose prose-lg md:prose-xl mx-auto text-slate-600 text-left font-medium leading-relaxed">
+              <p>Nu am construit DaRomânia pentru că avem soluții la toate problemele. Am construit-o pentru că am văzut o problemă pe care nimeni nu o rezolva corect.</p>
+              <p>Mii de oameni cu 10, 15, 20 de ani de experiență într-un domeniu primesc în fiecare zi notificarea pe care nu o doresc. Disponibilizare. Restructurare. Automatizare. Și primul instinct — perfect uman — este să caute alt job similar. Care va fi automatizat în 18 luni.</p>
+              
+              <div className="my-12 p-8 bg-indigo-50 rounded-3xl border border-indigo-100 text-center">
+                <p className="font-black text-indigo-600 text-3xl m-0">DaRomânia sparge acest cerc.</p>
+              </div>
+              
+              <p>Nu îți cerem să devii altcineva. Nu îți spunem că ce ai făcut până acum nu mai valorează. Îți spunem exact opusul — ce ai acumulat tu, în industria ta, în toți acei ani de muncă, este cel mai valoros activ pe care îl poți deține în era AI. Și noi îți arătăm cum să îl transformi într-un business care funcționează fără tine opt ore pe zi, șase zile pe săptămână.</p>
+              <p className="font-bold text-2xl text-slate-900 mt-8">Tu rămâi cu jobul. Tu rămâi cu pasiunea. DaRomânia te ajută să o duci la cel mai înalt nivel posibil.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* CELE TREI PRINCIPII */}
+        <section ref={principlesRef} className="py-24 md:py-32 bg-slate-50 snap-start px-4">
+          <div className="max-w-7xl mx-auto">
+            <h2 className="text-4xl md:text-6xl font-black mb-20 text-center text-slate-900">Ce credem cu adevărat</h2>
+            <div className="grid md:grid-cols-3 gap-12">
+              <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100 relative overflow-hidden group hover:-translate-y-2 transition-transform">
+                <div className="absolute -right-4 -top-4 text-9xl font-black text-slate-50 opacity-50 group-hover:text-indigo-50 transition-colors">01</div>
+                <div className="relative z-10">
+                  <h3 className="text-2xl font-black text-slate-900 mb-6 leading-tight">Tu ești cel mai în măsură să construiești un business în domeniul tău</h3>
+                  <p className="text-slate-600 text-lg leading-relaxed font-medium">Nu un consultant extern. Nu un curs generic de antreprenoriat. Tu — cel care a trăit industria, care cunoaște clienții reali, care știe exact unde sunt problemele nerezolvate și de ce nimeni nu le rezolvă bine. DaRomânia nu îți aduce expertiza. O ai deja. Îți aduce sistemul prin care o transformi în libertate financiară.</p>
+                </div>
+              </div>
+              
+              <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100 relative overflow-hidden group hover:-translate-y-2 transition-transform">
+                <div className="absolute -right-4 -top-4 text-9xl font-black text-slate-50 opacity-50 group-hover:text-violet-50 transition-colors">02</div>
+                <div className="relative z-10">
+                  <h3 className="text-2xl font-black text-slate-900 mb-6 leading-tight">Facem ceea ce iubim la nivel maxim</h3>
+                  <p className="text-slate-600 text-lg leading-relaxed font-medium">Nu pivotăm spre ceva nou și necunoscut. Amplificăm ce există deja în tine. Dacă ești reprezentant de vânzări, devii cel mai valoros consultant de vânzări din nișa ta. Dacă ești jurnalist, devii cel mai căutat creator de conținut de nișă din domeniu. Dacă ești contabil, devii CFO-ul strategic pe care startup-urile îl caută disperat și nu îl găsesc. Aceeași pasiune. Alt nivel. Altă ecuație financiară.</p>
+                </div>
+              </div>
+
+              <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100 relative overflow-hidden group hover:-translate-y-2 transition-transform">
+                <div className="absolute -right-4 -top-4 text-9xl font-black text-slate-50 opacity-50 group-hover:text-emerald-50 transition-colors">03</div>
+                <div className="relative z-10">
+                  <h3 className="text-2xl font-black text-slate-900 mb-6 leading-tight">Suntem parteneri, nu furnizori</h3>
+                  <p className="text-slate-600 text-lg leading-relaxed font-medium">Fee-ul nostru acoperă costurile de implementare ale proiectului tău. Nu câștigăm din disperarea ta. Câștigăm din succesul tău. Modelul nostru de business este aliniat complet cu al tău — cu cât construiești mai repede, cu atât călătoria noastră împreună are mai multă valoare. Mergem cu tine, nu în fața ta.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* DE CE E REVOLUȚIONAR */}
+        <section ref={diffRef} className="py-24 md:py-32 bg-slate-900 text-white snap-start px-4 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('https://picsum.photos/seed/abstract/1920/1080?blur=10')] opacity-10 object-cover" />
+          <div className="max-w-5xl mx-auto relative z-10">
+            <div className="text-center mb-16">
+              <h2 className="text-4xl md:text-6xl font-black mb-6">DaRomânia nu seamănă cu nimic ce ai văzut până acum</h2>
+              <p className="text-indigo-300 text-2xl font-medium">Și asta nu e un claim de marketing. E o diferență structurală.</p>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 p-8 rounded-[2rem] flex flex-col md:flex-row gap-6 items-center text-center md:text-left">
+                <div className="flex-1">
+                  <p className="text-slate-400 text-lg line-through decoration-slate-500">Toate platformele de reconversie profesională îți spun să devii altceva.</p>
+                </div>
+                <div className="hidden md:block w-px h-12 bg-white/20"></div>
+                <div className="flex-1">
+                  <p className="text-2xl font-bold text-white">DaRomânia îți spune să devii versiunea premium a ceea ce ești deja.</p>
+                </div>
+              </div>
+
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 p-8 rounded-[2rem] flex flex-col md:flex-row gap-6 items-center text-center md:text-left">
+                <div className="flex-1">
+                  <p className="text-slate-400 text-lg line-through decoration-slate-500">Toate cursurile online îți vând informație.</p>
+                </div>
+                <div className="hidden md:block w-px h-12 bg-white/20"></div>
+                <div className="flex-1">
+                  <p className="text-2xl font-bold text-white">DaRomânia îți însoțește implementarea, zi de zi, pas cu pas.</p>
+                </div>
+              </div>
+
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 p-8 rounded-[2rem] flex flex-col md:flex-row gap-6 items-center text-center md:text-left">
+                <div className="flex-1">
+                  <p className="text-slate-400 text-lg line-through decoration-slate-500">Toți consultanții lucrează pentru tine cu soluții externe.</p>
+                </div>
+                <div className="hidden md:block w-px h-12 bg-white/20"></div>
+                <div className="flex-1">
+                  <p className="text-2xl font-bold text-white">DaRomânia deblochează ce era deja în tine și îl structurează corect.</p>
+                </div>
+              </div>
+
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 p-8 rounded-[2rem] flex flex-col md:flex-row gap-6 items-center text-center md:text-left">
+                <div className="flex-1">
+                  <p className="text-slate-400 text-lg line-through decoration-slate-500">Toți furnizorii câștigă din ce plătești tu.</p>
+                </div>
+                <div className="hidden md:block w-px h-12 bg-white/20"></div>
+                <div className="flex-1">
+                  <p className="text-2xl font-bold text-white">DaRomânia câștigă din ce construiești tu. Suntem aliniați complet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* METODOLOGIA - CUM FUNCȚIONEAZĂ */}
+        <section ref={methodologyRef} className="py-24 md:py-32 bg-white snap-start px-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-20">
+              <h2 className="text-4xl md:text-6xl font-black mb-6 text-slate-900">Metodologia DaRomânia</h2>
+              <p className="text-2xl font-bold text-indigo-600 mb-4">Patru piloni, o singură destinație</p>
+              <p className="text-slate-600 text-xl max-w-3xl mx-auto font-medium">Nu un curs. Nu un template. Un sistem complet de transformare a experienței tale în business viabil, construit pas cu pas, zi de zi.</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* Pilon 1 */}
+              <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-200 shadow-lg">
+                <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center font-black text-2xl mb-8">1</div>
+                <h3 className="text-3xl font-black text-slate-900 mb-4">Automatizezi cele 85%</h3>
+                <p className="text-slate-600 text-lg leading-relaxed mb-8 font-medium">Înainte să construiești orice, eliminăm din mâinile tale tot ce poate face AI-ul mai bine decât tine. Nu ca să rămâi fără muncă. Ca să îți eliberezi 5-6 ore pe zi pe care acum le consumi pe taskuri repetitive care nu îți aduc nicio satisfacție și nicio diferențiere. Acele ore sunt capitalul de timp pentru business-ul tău.</p>
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                  <p className="text-slate-900 font-medium"><span className="font-black text-indigo-600 block mb-2 uppercase tracking-wider text-sm">Ce primești:</span> Listă de unelte AI specifice jobului tău, tutoriale pas cu pas, sistem de automatizare testat.</p>
+                </div>
+              </div>
+
+              {/* Pilon 2 */}
+              <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-200 shadow-lg">
+                <div className="w-16 h-16 bg-violet-100 text-violet-600 rounded-2xl flex items-center justify-center font-black text-2xl mb-8">2</div>
+                <h3 className="text-3xl font-black text-slate-900 mb-4">Monitorizezi, nu execuți</h3>
+                <p className="text-slate-600 text-lg leading-relaxed mb-8 font-medium">AI-ul lucrează, tu supraveghezi. Devii directorul propriului tău proces, nu executantul lui. Îți arătăm exact ce indicatori să urmărești, cum să verifici calitatea output-ului, când și cum să intervii. Este o schimbare fundamentală de poziție — de la angajat care execută, la antreprenor care conduce.</p>
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                  <p className="text-slate-900 font-medium"><span className="font-black text-violet-600 block mb-2 uppercase tracking-wider text-sm">Ce primești:</span> Dashboard de monitorizare, checklist zilnic de supervizare, sistem de quality control.</p>
+                </div>
+              </div>
+
+              {/* Pilon 3 */}
+              <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-200 shadow-lg">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center font-black text-2xl mb-8">3</div>
+                <h3 className="text-3xl font-black text-slate-900 mb-4">Monetizezi cu un singur proiect ales</h3>
+                <p className="text-slate-600 text-lg leading-relaxed mb-8 font-medium">Primești 5 proiecte de monetizare construite specific pe experiența ta. Nu pe a altcuiva. Pe a ta. Alegi unul — cel cu care rezonezi cel mai mult, cel pentru care ai cel mai mult capital de experiență acumulat. Un singur proiect, executat complet și consistent, este mai valoros decât cinci proiecte abandonate pe jumătate.</p>
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                  <p className="text-slate-900 font-medium"><span className="font-black text-emerald-600 block mb-2 uppercase tracking-wider text-sm">Ce primești:</span> 5 planuri de business detaliate, criterii de selecție personalizate, plan de lansare în 90 de zile.</p>
+                </div>
+              </div>
+
+              {/* Pilon 4 */}
+              <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-200 shadow-lg">
+                <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center font-black text-2xl mb-8">4</div>
+                <h3 className="text-3xl font-black text-slate-900 mb-4">Taskuri zilnice cu însoțire reală</h3>
+                <p className="text-slate-600 text-lg leading-relaxed mb-8 font-medium">Plan de 12 săptămâni, descompus în acțiuni zilnice extrem de specifice. Nu „construiește-ți brandul personal" — asta nu înseamnă nimic. Ci „azi publici pe LinkedIn o lecție din cele mai dificile 3 situații pe care le-ai rezolvat în carieră și cum le-ai depășit, cu această structură exactă." Specific. Măsurabil. Acționabil. Zi de zi. Cu echipa DaRomânia alături.</p>
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                  <p className="text-slate-900 font-medium"><span className="font-black text-rose-600 block mb-2 uppercase tracking-wider text-sm">Ce primești:</span> Plan zilnic de acțiune, comunitate de accountability, suport direct din echipa DaRomânia.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* PENTRU CINE */}
+        <section ref={targetRef} className="py-24 md:py-32 bg-slate-50 snap-start px-4">
+          <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12">
+            <div className="bg-white p-10 md:p-12 rounded-[3rem] shadow-xl border-t-8 border-emerald-500">
+              <h3 className="text-3xl md:text-4xl font-black mb-10 text-slate-900 leading-tight">DaRomânia este construită pentru tine dacă...</h3>
+              <ul className="space-y-6">
+                <li className="flex gap-4 items-start">
+                  <div className="bg-emerald-100 p-2 rounded-full shrink-0 mt-1"><Check className="text-emerald-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Ai între 5 și 25 de ani de experiență într-un domeniu și știi că ești bun la ce faci — dar simți că nisipul se mișcă sub picioare.</span>
+                </li>
+                <li className="flex gap-4 items-start">
+                  <div className="bg-emerald-100 p-2 rounded-full shrink-0 mt-1"><Check className="text-emerald-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Citești știrile despre disponibilizări și te întrebi în liniște „oare când vine rândul meu?" — fără să spui nimănui.</span>
+                </li>
+                <li className="flex gap-4 items-start">
+                  <div className="bg-emerald-100 p-2 rounded-full shrink-0 mt-1"><Check className="text-emerald-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Ai primit deja notificarea și cauți o cale care să nu înceapă cu „rescrie-ți CV-ul".</span>
+                </li>
+                <li className="flex gap-4 items-start">
+                  <div className="bg-emerald-100 p-2 rounded-full shrink-0 mt-1"><Check className="text-emerald-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Ești angajat, ești stabil momentan, dar vrei să construiești ceva al tău înainte ca decizia să nu mai fie a ta.</span>
+                </li>
+                <li className="flex gap-4 items-start">
+                  <div className="bg-emerald-100 p-2 rounded-full shrink-0 mt-1"><Check className="text-emerald-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Crezi că ai mai multă valoare decât reflectă salariul tău actual și vrei să demonstrezi asta concret.</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-white p-10 md:p-12 rounded-[3rem] shadow-xl border-t-8 border-rose-500">
+              <h3 className="text-3xl md:text-4xl font-black mb-10 text-slate-900 leading-tight">DaRomânia <span className="text-rose-600">nu</span> este pentru tine dacă...</h3>
+              <ul className="space-y-6">
+                <li className="flex gap-4 items-start">
+                  <div className="bg-rose-100 p-2 rounded-full shrink-0 mt-1"><X className="text-rose-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Cauți o schemă rapidă de îmbogățire fără muncă reală.</span>
+                </li>
+                <li className="flex gap-4 items-start">
+                  <div className="bg-rose-100 p-2 rounded-full shrink-0 mt-1"><X className="text-rose-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Nu ești dispus să investești 1-2 ore pe zi în construirea business-ului tău.</span>
+                </li>
+                <li className="flex gap-4 items-start">
+                  <div className="bg-rose-100 p-2 rounded-full shrink-0 mt-1"><X className="text-rose-600 w-5 h-5"/></div>
+                  <span className="text-lg text-slate-700 font-medium">Vrei să abandonezi complet ce ai construit și să o iei de la zero într-un domeniu pe care nu îl cunoști.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-8">
+          <div className="flex items-center gap-2">
+            <HeartHandshake className="text-indigo-600 w-6 h-6" />
+            <span className="text-xl font-bold tracking-tight">DaRomânia</span>
+          </div>
+          <div className="text-center md:text-left">
+            <p className="text-slate-500 text-sm font-medium mb-1">
+              © 2026 DaRomânia. 99 de meserii în pericol. 99 de business-uri posibile. Unul e al tău.
+            </p>
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
+              Powered by SSociety.eu
+            </p>
+          </div>
+          <div className="flex gap-6">
+            <a href="https://linkedin.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600 transition-colors">LinkedIn</a>
+            <a href="https://twitter.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600 transition-colors">Twitter</a>
+            <a href="mailto:contact@daromania.ro" className="text-slate-400 hover:text-indigo-600 transition-colors">Contact</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function JoinForm({ onClose }: { onClose: () => void }) {
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitted(true);
+    setTimeout(onClose, 2000);
+  };
+
+  if (submitted) {
+    return (
+      <div className="p-12 text-center">
+        <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+          <CheckCircle2 className="w-10 h-10 text-green-600" />
+        </div>
+        <h3 className="text-2xl font-bold mb-2">Bun venit în rețea!</h3>
+        <p className="text-slate-500">Te vom contacta în curând cu primele oportunități.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-10">
+      <h3 className="text-2xl font-bold mb-2">Alătură-te Rețelei</h3>
+      <p className="text-slate-500 mb-8">Conectează-te cu alți profesioniști care au pivotat cu succes.</p>
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="relative">
+          <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <input required type="text" placeholder="Nume complet" className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div className="relative">
+          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <input required type="email" placeholder="Adresa de email" className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div className="relative">
+          <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <input required type="text" placeholder="Meseria actuală" className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+        <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition-all">
+          Trimite Cererea
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function EligibilityCheck({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<boolean[]>([]);
+
+  const questions = [
+    "Ai fost afectat direct de automatizarea AI în ultimele 6 luni?",
+    "Meseria ta are un risc de automatizare mai mare de 60%?",
+    "Ești dispus să urmezi un program de recalificare de 4 săptămâni?"
+  ];
+
+  const handleAnswer = (val: boolean) => {
+    const newAnswers = [...answers, val];
+    setAnswers(newAnswers);
+    if (step < questions.length - 1) {
+      setStep(step + 1);
+    } else {
+      setStep(questions.length);
+    }
+  };
+
+  const isEligible = answers.every(a => a === true);
+
+  if (step === questions.length) {
+    return (
+      <div className="p-12 text-center">
+        {isEligible ? (
+          <>
+            <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Coins className="w-10 h-10 text-indigo-600" />
+            </div>
+            <h3 className="text-2xl font-bold mb-2">Ești Eligibil!</h3>
+            <p className="text-slate-500 mb-8">Ai fost pre-aprobat pentru grantul de tranziție de 1.000€.</p>
+            <button onClick={onClose} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition-all">
+              Revendică Grantul
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-10 h-10 text-slate-400" />
+            </div>
+            <h3 className="text-2xl font-bold mb-2">Mai avem nevoie de date</h3>
+            <p className="text-slate-500 mb-8">Momentan nu îndeplinești toate criteriile automate. Te rugăm să ne contactezi pentru o evaluare manuală.</p>
+            <button onClick={onClose} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-all">
+              Închide
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-10">
+      <div className="flex justify-between items-center mb-8">
+        <h3 className="text-xl font-bold">Verificare Eligibilitate</h3>
+        <span className="text-sm font-bold text-indigo-600">Pasul {step + 1}/3</span>
+      </div>
+      
+      <p className="text-lg font-medium text-slate-800 mb-10 leading-relaxed">
+        {questions[step]}
+      </p>
+      
+      <div className="grid grid-cols-2 gap-4">
+        <button 
+          onClick={() => handleAnswer(true)}
+          className="py-4 rounded-xl border-2 border-slate-100 hover:border-indigo-600 hover:bg-indigo-50 font-bold transition-all"
+        >
+          Da
+        </button>
+        <button 
+          onClick={() => handleAnswer(false)}
+          className="py-4 rounded-xl border-2 border-slate-100 hover:border-rose-600 hover:bg-rose-50 font-bold transition-all"
+        >
+          Nu
+        </button>
+      </div>
+    </div>
+  );
+}

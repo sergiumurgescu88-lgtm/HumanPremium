@@ -1,0 +1,97 @@
+import { detectIntent } from "./intentEngine";
+
+export interface BuddyResponse {
+  mode: string;
+  guidance: string;
+  codeSnippet?: string;
+  installSteps?: string[];
+  productInfo?: any;
+  confidence: number;
+}
+
+const daeurosystemKnowledge = {
+  products: {
+    "arsenal": {
+      name: "Arsenal API",
+      price: "9",
+      type: "one_time",
+      description: "150+ API-uri gratuite + ghid complet de automatizare",
+      installCommand: "npm install @daeu/arsenal",
+      features: ["150+ API-uri", "Fluxuri complete", "Acces pe viață"]
+    },
+    "openclaw": {
+      name: "OpenClaw AI",
+      price: "19",
+      type: "monthly",
+      description: "Flota AI: CTO + CFO + CEO Agent 24/7",
+      features: ["Agent 24/7", "WhatsApp + Telegram", "Execuție automată"]
+    },
+    "academy": {
+      name: "Academy DaRomania",
+      price: "29",
+      type: "monthly",
+      description: "71 proiecte practice + comunitate + OpenClaw inclus",
+      features: ["71 proiecte", "Comunitate", "Dashboard succes"]
+    },
+    "afacere": {
+      name: "Afacere la Cheie",
+      price: "99",
+      type: "monthly",
+      description: "Business complet livrat în 14 zile (brand, site, automatizări)",
+      features: ["Brand + site", "Monetizare completă", "Setup complet"]
+    }
+  },
+
+  codingTemplates: {
+    "api": "const response = await fetch('/api/arsenal/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });",
+    "agent": "const buddy = await runBuddy(prompt, { mode: 'executive', context: 'installation' });",
+    "install": "curl -fsSL https://install.daeu.online | bash -s -- --product=openclaw"
+  }
+};
+
+export async function runBuddy(input: string, options: any = {}): Promise<BuddyResponse> {
+  const text = input.toLowerCase();
+  let guidance = "Sunt Buddy PREMIUM — AI Executive Companion. Spune-mi ce vrei să construiești, să automatizezi sau să instalezi.";
+  let codeSnippet = "";
+  let installSteps: string[] = [];
+  let productInfo = null;
+  let mode = "general";
+
+  // Detect product requests
+  for (const [key, product] of Object.entries(daeurosystemKnowledge.products)) {
+    if (text.includes(key) || text.includes(product.name.toLowerCase())) {
+      productInfo = product;
+      mode = key;
+      
+      if (text.includes("instal") || text.includes("setup") || text.includes("cum instalez")) {
+        guidance = `Îți dau pașii exacți de instalare pentru ${product.name} (${product.price}$).`;
+        installSteps = [
+          `1. Rulează comanda: ${daeurosystemKnowledge.codingTemplates.install}`,
+          "2. Configurează variabilele de mediu (.env)",
+          "3. Rulează `npm run setup`",
+          "4. Verifică cu `pm2 status`"
+        ];
+      }
+      break;
+    }
+  }
+
+  // Coding requests
+  if (text.includes("cod") || text.includes("code") || text.includes("script") || text.includes("api")) {
+    mode = "coding";
+    guidance = "Iată un exemplu de cod optimizat pentru cerința ta:";
+    codeSnippet = daeurosystemKnowledge.codingTemplates.api;
+  }
+
+  return {
+    mode,
+    guidance,
+    codeSnippet,
+    installSteps,
+    productInfo,
+    confidence: 0.92
+  };
+}
+
+// Pentru compatibilitate cu versiunea veche
+export { runBuddy as default };
