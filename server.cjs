@@ -129,3 +129,10 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log("[DaRomania] Server pornit pe portul", PORT);
 });
+
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error('[DaRomania] Port ocupat, astept 3s si reincerc...');
+    setTimeout(() => process.exit(1), 3000);
+  }
+});
